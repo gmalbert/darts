@@ -71,12 +71,20 @@ KEYWORD_TO_TYPE: dict[str, str] = {
 # PDC majors (few per year, higher ID density in recent years)
 DISCOVERY_RANGES: list[tuple[int, int, int]] = [
     # (start, end, step) — wider step = fewer requests, may miss events
+    # Calibration points (from live probing):
+    #   eid=23500 → ADO event, Jan 2013
+    #   eid=24300 → Colorado Open, Nov 2020
+    #   eid=24900 → PDPA PC 17, Jun 2022
+    #   eid=25774 → Premier League Week 15, May 2026
+    # PDC events from 2015–2017 appear to be in the 10000–18000 range.
+    (10_000, 14_000, 15),   # ~2010–2014 era
+    (14_000, 18_000, 10),   # ~2014–2017 era
     (18_000, 20_000, 10),   # ~2013–2016 era (PDC events mixed with others)
     (20_000, 22_500, 8),    # ~2016–2019 era
     (22_500, 24_000, 5),    # ~2019–2021 era
     (24_000, 24_800, 3),    # ~2021–2022 era
     (24_800, 25_200, 2),    # ~2022–2023 era
-    (25_200, 25_800, 1),    # ~2024–2026 era (dense, scan every ID)
+    (25_200, 25_900, 1),    # ~2024–2026 era (dense, scan every ID)
 ]
 
 

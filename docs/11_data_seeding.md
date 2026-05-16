@@ -75,17 +75,33 @@ Scraping dartsdatabase.co.uk from 2015...
 Scanning dartsdatabase.co.uk for PDC major events from 2015...
   Found: [25774] Premier League Week 15  (2026-05-14)
   Found: [24900] PDPA Players Championship 17  (2022-06-15)
-  Found: [24500] UK Open 2021  (2021-11-21)
   ...
-Loaded 3847 raw matches from dartsdatabase.co.uk
-Created 287 player records.
-Imported 3847 historical matches.
-Wrote 7694 EloHistory records.
+Loaded 3012 raw matches from dartsdatabase.co.uk
+Created 674 player records.
+Imported 2919 historical matches.
+Wrote 5838 EloHistory records.
 
 Flag written: data_files/db_is_real.flag
 
 === Seed complete ===
 ```
+
+### Observed Coverage (first run, May 2026)
+
+| Tournament | Years Found | Matches |
+|-----------|-------------|--------|
+| PDC World Championship | 2018–2025 | 1118 |
+| Premier League Darts | 2021–2026 | 406 |
+| UK Open | 2018, 2025–2026 | 602 |
+| World Matchplay | 2020–2025 | 187 |
+| Grand Slam of Darts | 2019–2025 | 119 |
+| World Grand Prix | 2021–2025 | 124 |
+| World Series Finals | 2021–2024 | 108 |
+| Players Championship Finals | 2023–2025 | 189 |
+
+**Date range:** 2018-02-10 → 2026-05-14  
+**Players:** 674  
+**Note:** Coverage starts at 2018 because PDC event IDs from 2015–2017 are in a lower ID range. The discovery scan was updated to probe from eid=10000 to capture these. Re-running from scratch will extend coverage back to ~2015.
 
 ---
 
@@ -259,9 +275,9 @@ git push
 
 ## Performance Notes
 
-- **Full seed (2015–2026):** 30–40 minutes
-  - ~1500 event ID probes (1s delay each)
-  - ~3800 match imports
+- **Full seed (2015–2026):** 45–60 minutes
+  - ~2500 event ID probes (1s delay each) after expanding lower discovery range
+  - ~3000–4500 match imports expected (more with 2015–2017 coverage)
   - Elo computation is fast (<1 min)
 - **Partial refresh (current year only):** 5–10 minutes
 - **Live odds fetch:** <1 minute
