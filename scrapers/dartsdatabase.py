@@ -233,14 +233,38 @@ def _discover_events(start_year: int = 2015, end_year: int | None = None) -> Gen
     Yields parsed event dicts.
     """
     seen_eids: set[int] = set()
+    total_planned = sum(len(range(a, b, s)) for a, b, s in DISCOVERY_RANGES)
+    probed = 0
+    matched = 0
 
-    for range_start, range_end, step in DISCOVERY_RANGES:
+    print(f"  Discovery plan: {total_planned} probes across {len(DISCOVERY_RANGES)} ranges")
+
+    for range_index, (range_start, range_end, step) in enumerate(DISCOVERY_RANGES, start=1):
+        range_probes = len(range(range_start, range_end, step))
+        range_start_time = time.monotonic()
+        print(
+            f"  Range {range_index}/{len(DISCOVERY_RANGES)}: "
+            f"eid {range_start}-{range_end - 1} step {step} "
+            f"(~{range_probes} probes)"
+        )
+
         for eid in range(range_start, range_end, step):
             if eid in seen_eids:
                 continue
             seen_eids.add(eid)
+            probed += 1
 
             event = _fetch_event(eid, delay=1.0)
+
+            if probed % 60 == 0:
+                elapsed = time.monotonic() - range_start_time
+                overall_pct = (probed / total_planned) * 100 if total_planned else 0
+                print(
+                    f"  Progress: {probed}/{total_planned} probes ({overall_pct:.1f}%), "
+                    f"current eid={eid}, matched events={matched}, "
+                    f"range elapsed={elapsed:.0f}s"
+                )
+
             if event is None:
                 continue
 
@@ -250,8 +274,15 @@ def _discover_events(start_year: int = 2015, end_year: int | None = None) -> Gen
             if end_year is not None and event_year > end_year:
                 continue
 
+            matched += 1
             print(f"  Found: [{eid}] {event['name']}  ({event['date'].date()})")
             yield event
+
+        range_elapsed = time.monotonic() - range_start_time
+        print(
+            f"  Completed range {range_index}/{len(DISCOVERY_RANGES)} "
+            f"in {range_elapsed:.0f}s"
+        )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────

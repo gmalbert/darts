@@ -44,9 +44,10 @@ python -m db.seed_real --start-year 2015
 
 1. **Wipes existing tables** — clean slate
 2. **Scans dartsdatabase.co.uk** — discovers PDC major events (World Championship, Premier League, etc.)
-   - Probes ~1500 event IDs
+  - Probes ~2500 event IDs
    - Filters for tournaments from `start_year` onward
    - Extracts match results, player averages, scores
+  - Prints heartbeat progress during scans (range start/end + periodic probe counts)
 3. **Builds ORM entities** — creates Player, Tournament, Match, EloHistory records
 4. **Computes Elo ratings** — updates player ratings based on historical matches
 5. **Fetches live odds** — DraftKings odds from The Odds API (uses `ODDS_API_KEY` from `.env`)
