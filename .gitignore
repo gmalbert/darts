@@ -1,0 +1,82 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment variables — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+
+# Streamlit secrets — NEVER commit
+.streamlit/secrets.toml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data_files/*.db
+data_files/*.sqlite
+
+# Exception: the pre-seeded production DB committed by the GH Action
+!data_files/bullziq.db
+!data_files/db_is_real.flag
+
+# Trained model artifacts
+models/*.pkl
+models/*.joblib
+models/*.bin
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Cache
+.cache/
+*.cache
+
+# Scraped data / large CSV dumps (keep seed scripts, not output files)
+data_files/*.csv
+data_files/*.parquet
+data_files/*.json
+# Allow the .gitkeep so the folder is tracked
+!data_files/.gitkeep
+
+# Static generated files
+static/sitemap.xml

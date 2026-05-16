@@ -53,153 +53,78 @@ These pages are generated automatically from your database — one template, tho
 ### Player Pages (200+ pages)
 
 ```
-URL: /players/[slug]
-Title: "[Name] Darts Stats, Elo Rating & Career Record | YourSite"
-H1: "[Name] — Career Statistics & Betting Analysis"
+Streamlit page: pages/2_Players.py
+Page title set via: st.set_page_config(page_title=f"{player_name} Darts Stats | Darts Analytics")
 ```
 
-```ts
-// Metadata generation at scale
-export async function generateMetadata({ params }): Promise<Metadata> {
-  const player = await getPlayer(params.slug)
-  const stats = player.stats
+**Important SEO note**: Streamlit apps are rendered client-side (React), so Google's crawler may not index individual "pages" the same way it would a server-rendered site. Streamlit is best suited for a logged-in tool or a niche community that discovers the app via direct sharing. If organic Google search traffic is a primary goal, consider:
 
-  return {
-    title: `${player.name} Darts Stats, Elo Rating & Betting Analysis`,
-    description: `${player.name} career stats: ${stats.career_avg} 3-dart average, ` +
-      `${(stats.checkout_pct * 100).toFixed(1)}% checkout rate, Elo ${stats.elo}. ` +
-      `Head-to-head record and DraftKings betting analysis.`,
-    keywords: [
-      player.name,
-      `${player.name} darts`,
-      `${player.name} stats`,
-      `${player.name} average`,
-      `${player.name} betting`,
-      player.nickname && `${player.nickname} darts`,
-    ].filter(Boolean),
-    openGraph: {
-      title: `${player.name} — Darts Analytics`,
-      description: `Elo: ${stats.elo} | Avg: ${stats.career_avg} | Checkout: ${(stats.checkout_pct*100).toFixed(1)}%`,
-      type: 'profile',
-      url: `https://yourdomain.com/players/${params.slug}`,
-    },
-    alternates: { canonical: `https://yourdomain.com/players/${params.slug}` },
-  }
-}
+1. **Hybrid approach**: Use Streamlit for the interactive app, but also generate static HTML player/match summary pages (via `jinja2` + a static site generator or a simple Flask endpoint) that Google can crawl.
+2. **Accept the trade-off**: Streamlit gives you faster time-to-launch and zero frontend code. SEO matters less in year 1 — build the product first, optimize distribution later.
+3. **st.set_page_config**: Always set meaningful titles and use `st.markdown` to add structured content that _is_ crawlable in Googlebot's JavaScript rendering.
+
+```python
+# Standard page config on every page
+st.set_page_config(
+    page_title=f"{player['name']} Darts Stats | Darts Analytics",
+    page_icon="🎯",
+    layout="wide",
+)
+# Use st.write with real text so Googlebot's JS renderer can see content
+st.title(f"{player['name']} — Career Stats & Betting Analysis")
+st.write(
+    f"{player['name']} career stats: {stats['career_avg']:.2f} 3-dart average, "
+    f"{stats['checkout_pct']*100:.1f}% checkout rate, Elo {stats['elo']:.0f}. "
+    f"Head-to-head record and DraftKings betting analysis."
+)
 ```
 
-### H2H Pages (thousands of pages)
+### H2H Pages
 
 ```
-URL: /h2h/[player1-slug]-vs-[player2-slug]
-Title: "[Player 1] vs [Player 2]: Head-to-Head Darts Record"
+Streamlit approach: a selectbox pair (Player 1 / Player 2) on pages/6_Tools.py
+Not a separate URL per matchup — but the data is all there
 ```
 
-```ts
-// apps/web/src/app/h2h/[matchup]/page.tsx
-// matchup = "van-gerwen-vs-littler"
+For SEO-indexed H2H pages, generate static markdown or HTML files from the DB (see Hybrid Approach above).
 
-export async function generateStaticParams() {
-  // Pre-render H2H pages for top 50 players against each other
-  // That's 50 * 49 / 2 = 1,225 pages
-  const top50 = await getTopPlayers(50)
-  const pairs = []
-  for (let i = 0; i < top50.length; i++) {
-    for (let j = i + 1; j < top50.length; j++) {
-      pairs.push({ matchup: `${top50[i].slug}-vs-${top50[j].slug}` })
-    }
-  }
-  return pairs
-}
+### Sitemap / Robots
 
-export default async function H2HPage({ params }) {
-  const [slug1, slug2] = params.matchup.split('-vs-')
-  const [p1, p2, history] = await Promise.all([
-    getPlayer(slug1),
-    getPlayer(slug2),
-    getH2HHistory(slug1, slug2),
-  ])
+Streamlit Community Cloud automatically serves `robots.txt` allowing indexing.
 
-  const p1Wins = history.filter(m => m.winner_slug === slug1).length
-  const p2Wins = history.length - p1Wins
+For a hybrid static approach, generate a sitemap at build time:
 
-  return (
-    <main>
-      <h1>{p1.name} vs {p2.name}: Head-to-Head Record</h1>
-      <p className="lead">
-        {p1.name} and {p2.name} have met {history.length} times in PDC competition.
-        {p1.name} leads {p1Wins}–{p2Wins}.
-      </p>
-      <H2HStatsTable p1={p1} p2={p2} history={history} />
-      <MatchHistoryList matches={history} p1={p1} p2={p2} />
-    </main>
-  )
-}
-```
+```python
+# scripts/generate_sitemap.py
+from db.queries import get_all_players, get_tournaments
+from datetime import date
 
-### Sitemap
+BASE = "https://your-app.streamlit.app"
 
-```ts
-// apps/web/src/app/sitemap.ts
-import { MetadataRoute } from 'next'
-import { getAllPlayers, getAllMatches, getAllTournaments } from '@/lib/db'
+def generate_sitemap():
+    players     = get_all_players()
+    tournaments = get_tournaments(dk_covered_only=True)
+    today       = date.today().isoformat()
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [players, matches, tournaments] = await Promise.all([
-    getAllPlayers(),
-    getAllMatches({ yearFrom: 2020 }),
-    getAllTournaments(),
-  ])
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
 
-  const BASE = 'https://yourdomain.com'
+    for url, priority in [
+        (BASE,                0.9),
+        (f"{BASE}/Picks",     0.9),
+        (f"{BASE}/Odds",      0.9),
+        (f"{BASE}/Players",   0.8),
+        (f"{BASE}/Tournaments", 0.8),
+    ]:
+        lines.append(f"  <url><loc>{url}</loc><lastmod>{today}</lastmod>"
+                     f"<priority>{priority}</priority></url>")
 
-  const playerUrls = players.map(p => ({
-    url: `${BASE}/players/${p.slug}`,
-    lastModified: new Date(),
-    changeFrequency: 'weekly' as const,
-    priority: 0.8,
-  }))
+    lines.append("</urlset>")
+    with open("static/sitemap.xml", "w") as f:
+        f.write("\n".join(lines))
 
-  const matchUrls = matches.map(m => ({
-    url: `${BASE}/matches/${m.id}`,
-    lastModified: m.match_date ? new Date(m.match_date) : new Date(),
-    changeFrequency: 'never' as const,  // historical matches don't change
-    priority: 0.5,
-  }))
-
-  const tournamentUrls = tournaments.map(t => ({
-    url: `${BASE}/tournaments/${t.slug}`,
-    lastModified: new Date(),
-    changeFrequency: 'monthly' as const,
-    priority: 0.9,
-  }))
-
-  // H2H pages for top 50 pairs
-  const top50 = players.slice(0, 50)
-  const h2hUrls = []
-  for (let i = 0; i < top50.length; i++) {
-    for (let j = i + 1; j < top50.length; j++) {
-      h2hUrls.push({
-        url: `${BASE}/h2h/${top50[i].slug}-vs-${top50[j].slug}`,
-        lastModified: new Date(),
-        changeFrequency: 'monthly' as const,
-        priority: 0.6,
-      })
-    }
-  }
-
-  return [
-    { url: BASE, lastModified: new Date(), priority: 1.0 },
-    { url: `${BASE}/picks`, lastModified: new Date(), priority: 1.0 },
-    { url: `${BASE}/tournaments`, lastModified: new Date(), priority: 0.9 },
-    { url: `${BASE}/players`, lastModified: new Date(), priority: 0.8 },
-    { url: `${BASE}/odds`, lastModified: new Date(), priority: 0.9 },
-    ...tournamentUrls,
-    ...playerUrls,
-    ...h2hUrls,
-    ...matchUrls,
-  ]
-}
+if __name__ == "__main__":
+    generate_sitemap()
 ```
 
 ---
@@ -247,47 +172,24 @@ Sections:
 
 ## Internal Linking Strategy
 
-Every player page should link to:
-- Their top 5 H2H matchup pages
+Every player section should surface:
+- Their top 5 H2H matchups (links via selectbox or st.page_link)
 - Tournaments they've won
-- Recent match center pages
+- Recent match analysis
 
-Every match center page should link to:
-- Both player profiles
+Every match center should link to:
+- Both player profiles (st.page_link / st.button navigation)
 - The tournament hub
 - Similar recent matchups
 
-Every tournament hub should link to:
-- All entrant player profiles
-- Past result pages for that tournament
-- Preview/recap blog posts
+```python
+# Navigation helpers (Streamlit 1.36+)
+import streamlit as st
 
-```tsx
-// components/RelatedLinks.tsx — add to bottom of every major page
-export function RelatedLinks({ type, context }) {
-  // context contains the relevant slugs to generate links
-  switch (type) {
-    case 'player':
-      return (
-        <nav aria-label="Related pages">
-          <h3>Related</h3>
-          <ul>
-            {context.topH2Hs.map(opp => (
-              <li key={opp.slug}>
-                <Link href={`/h2h/${context.slug}-vs-${opp.slug}`}>
-                  {context.name} vs {opp.name} — Head-to-Head Record
-                </Link>
-              </li>
-            ))}
-            {context.tournaments.map(t => (
-              <li key={t.slug}>
-                <Link href={`/tournaments/${t.slug}`}>{t.name} results and betting</Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )
-    // other types...
-  }
-}
+def player_nav_links(player_slug: str, top_h2hs: list[dict]):
+    st.subheader("Related")
+    for opp in top_h2hs[:5]:
+        st.page_link("pages/6_Tools.py",
+                     label=f"H2H: {player_slug} vs {opp['slug']}",
+                     icon="⚔️")
 ```

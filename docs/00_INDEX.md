@@ -35,9 +35,11 @@ These are the PDC/darts events DraftKings actively books — build data pipeline
 
 ```bash
 git clone <your-repo>
-cd darts-site
+cd darts-app
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 cp .env.example .env
-npm install
-npm run db:seed        # pulls historical data from dartsdatabase.co.uk
-npm run dev
+python -m scrapers.dartsdatabase seed --start-year 2000  # seed historical data
+streamlit run app.py
 ```

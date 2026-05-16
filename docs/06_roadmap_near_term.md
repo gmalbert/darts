@@ -9,278 +9,204 @@ Resist building everything. The goal of the first 90 days is one thing: **be the
 ## Week 1–2: Foundation
 
 ### Tasks
-- [ ] Set up monorepo (`pnpm workspaces` or `turborepo`)
-- [ ] Spin up Supabase project (free tier: 500MB, plenty for year 1)
-- [ ] Run `prisma migrate dev` to create schema
+- [ ] Create virtual environment and install dependencies
+- [ ] Set up SQLite DB with SQLAlchemy schema (`db/schema.py`)
 - [ ] Run historical seed from dartsdatabase.co.uk (2000–present)
 - [ ] Verify data: spot-check 10 known match results
-- [ ] Stand up FastAPI with `/health` endpoint on Railway (free tier)
-- [ ] Stand up Next.js on Vercel
-- [ ] Connect them — Next.js fetches from Railway API
+- [ ] Stand up `app.py` with working Streamlit home page
+- [ ] Deploy to Streamlit Community Cloud (connect GitHub repo)
 
 ```bash
 # Bootstrap commands
-npx create-turbo@latest darts-site
-cd darts-site
-pnpm add -D prisma
-npx prisma init
+git clone <your-repo>
+cd darts-app
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 
 # Seed historical data
-cd apps/api
-pip install -r requirements.txt
 python -m scrapers.dartsdatabase seed --start-year 2000
 
 # Verify
-python -c "
+python - <<'EOF'
 import sqlite3
-conn = sqlite3.connect('darts.db')
+conn = sqlite3.connect('data_files/darts.db')
 cur = conn.cursor()
 cur.execute('SELECT COUNT(*) FROM matches')
 print('Total matches:', cur.fetchone()[0])
 cur.execute('SELECT year, COUNT(*) FROM matches GROUP BY year ORDER BY year DESC LIMIT 5')
 print('Recent years:', cur.fetchall())
-"
+EOF
+
+# Run locally
+streamlit run app.py
+```
+
+### `requirements.txt` (starting point)
+```
+streamlit>=1.35
+sqlalchemy>=2.0
+pandas>=2.2
+plotly>=5.22
+numpy>=1.26
+scikit-learn>=1.5
+scipy>=1.13
+requests>=2.32
+beautifulsoup4>=4.12
+apscheduler>=3.10
+python-dotenv>=1.0
+joblib>=1.4
 ```
 
 ### Deliverable
-A local Postgres DB with ~15,000 historical PDC matches.
+A local SQLite DB with ~15,000 historical PDC matches and a running Streamlit app.
 
 ---
 
 ## Week 3–4: Player Profiles
 
-Build `/players/[slug]` first — it's the lowest-risk page with the highest SEO value.
+Build `pages/2_Players.py` first — lowest-risk with the highest data-to-page ratio.
 
 ### Tasks
-- [ ] Build Elo model, train on full history, store results in `elo_history`
-- [ ] Build `PlayerStatsCache` refresh job (runs nightly)
-- [ ] Build `/players` index page — searchable table of all active PDC players
-- [ ] Build `/players/[slug]` profile page with:
-  - Career stats card
-  - Elo history line chart (Recharts)
-  - Tournament win rate table
-  - Last 20 match results list
-- [ ] Add `generateStaticParams` for top 50 players (SSG for speed)
-- [ ] Submit sitemaps to Google
+- [ ] Build Elo model, train on full history, store results in `elo_history` table
+- [ ] Build `PlayerStatsCache` refresh function (runs nightly via APScheduler)
+- [ ] Build player index: searchable `st.dataframe` of all active PDC players
+- [ ] Build player profile: stat cards, Elo line chart (Plotly), recent matches table
+- [ ] Deploy to Streamlit Community Cloud
 
-```ts
-// apps/web/src/app/players/[slug]/page.tsx
-import { Metadata } from 'next'
-import { getPlayer } from '@/lib/api'
-import { PlayerProfile } from '@/components/PlayerProfile'
-import { notFound } from 'next/navigation'
+```python
+# pages/2_Players.py
+import streamlit as st
+import pandas as pd
+from db.queries import get_all_players, get_player, get_player_stats, get_elo_history
 
-// Pre-render top 50 players at build time
-export async function generateStaticParams() {
-  const top50 = await fetch(`${process.env.API_URL}/v1/players?limit=50&sort=elo`)
-  const players = await top50.json()
-  return players.map(p => ({ slug: p.slug }))
-}
+st.set_page_config(page_title="Players | Darts Analytics", layout="wide")
+st.title("Player Profiles")
 
-export async function generateMetadata({ params }): Promise<Metadata> {
-  const player = await getPlayer(params.slug)
-  if (!player) return {}
-  return {
-    title: `${player.name} Darts Stats, Elo Rating & Betting Analysis`,
-    description: `${player.name} career stats, 3-dart average, checkout %, Elo rating, 
-                  head-to-head record and DraftKings betting analysis.`,
-    openGraph: {
-      title: `${player.name} — Darts Analytics`,
-      type: 'profile',
-    },
-  }
-}
+players = get_all_players()
+df_idx  = pd.DataFrame(players)[["name", "nationality", "elo", "dk_win_rate"]]
+df_idx  = df_idx.sort_values("elo", ascending=False).reset_index(drop=True)
 
-export default async function PlayerPage({ params }) {
-  const player = await getPlayer(params.slug)
-  if (!player) notFound()
-  return <PlayerProfile player={player} />
-}
+selected = st.selectbox("Search players", df_idx["name"].tolist())
+
+if selected:
+    from components.player_profile import render_player_profile
+    render_player_profile(selected)
 ```
 
 ### Deliverable
-~200 live player profile pages indexed by Google.
+Working player profiles for all active PDC players.
 
 ---
 
 ## Week 5–6: Match Center + Pre-Match Analysis
 
 ### Tasks
-- [ ] Build `/matches/[id]` — the core page
-- [ ] Add stat comparison bars (avg, checkout%, 180s)
-- [ ] Add H2H history table (last 10 meetings)
-- [ ] Add odds snapshot display (latest DK line, if available)
-- [ ] Set up The Odds API polling (every 15 min) for upcoming DK darts events
+- [ ] Build `pages/3_Matches.py` — the core page
+- [ ] Add stat comparison columns (avg, checkout %, 180s)
+- [ ] Add H2H history dataframe (last 10 meetings)
+- [ ] Add latest DK odds display
+- [ ] Set up The Odds API polling (every 10 min) for upcoming DK darts events
 - [ ] Train logistic regression match predictor on historical data
 - [ ] Backtest model — log Brier score and accuracy
 - [ ] Display model probability on match center page
 
 ```python
-# Train and evaluate the model
-# apps/api/scripts/train_predictor.py
+# scripts/train_predictor.py
 from models.match_predictor import DartsMatchPredictor
 from models.backtester import backtest_model
-from db import get_all_matches_with_stats
+from db.queries import get_all_matches_with_stats, build_stats_cache
 
-matches = get_all_matches_with_stats()
+matches     = get_all_matches_with_stats()
 stats_cache = build_stats_cache(matches)
 
 predictor = DartsMatchPredictor()
-results = backtest_model(predictor, matches, stats_cache)
+results   = backtest_model(predictor, matches, stats_cache)
 
-print(f"Brier Score: {results['brier_score']}")    # target < 0.22
-print(f"Accuracy:    {results['accuracy']:.1%}")   # target > 60%
+print(f"Brier Score: {results['brier_score']:.4f}")   # target < 0.22
+print(f"Accuracy:    {results['accuracy']:.1%}")      # target > 60%
 print(f"N:           {results['n_predictions']}")
 
-# Retrain on full dataset and save
 predictor.train(matches, stats_cache)
 predictor.save("models/match_predictor.pkl")
 ```
 
 ### Deliverable
-Match center pages for all upcoming DK-covered darts events, with model probability displayed.
+Match center pages for all upcoming DK-covered darts events with model probability.
 
 ---
 
-## Week 7–8: Picks Feed + Edge Calculator
+## Week 7–8: Picks Feed + Interactive Tools
 
 ### Tasks
-- [ ] Build `/picks` page — today's model picks with edge %
-- [ ] Build `/tools/edge-calculator` — manual odds vs probability input
-- [ ] Build `/tools/180s-calculator` — Poisson-based prop tool
-- [ ] Add responsible gambling disclaimer to all picks pages
-- [ ] Wire up DraftKings affiliate link (see `09_legal_and_compliance.md`)
-- [ ] Add "Bet at DraftKings" CTA buttons linked to specific event pages
+- [ ] Build `pages/4_Picks.py` — today's model picks with edge % filter slider
+- [ ] Build edge calculator tool in `pages/6_Tools.py`
+- [ ] Build 180s over/under Poisson calculator in `pages/6_Tools.py`
+- [ ] Add responsible gambling disclaimer to all picks pages (see `09_legal_and_compliance.md`)
+- [ ] Wire up DraftKings affiliate link
 
-```tsx
-// Key affiliate CTA component
-// components/ui/DKButton.tsx
-const DK_BASE = 'https://sportsbook.draftkings.com'
-const AFFILIATE_TAG = process.env.NEXT_PUBLIC_DK_AFFILIATE_TAG
-
-interface DKButtonProps {
-  eventSlug?: string  // e.g. 'sports/darts'
-  label?: string
-}
-
-export function DKButton({ eventSlug = 'sports/darts', label = 'Bet at DraftKings' }: DKButtonProps) {
-  const url = `${DK_BASE}/${eventSlug}${AFFILIATE_TAG ? `?${AFFILIATE_TAG}` : ''}`
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer sponsored"
-      className="inline-flex items-center gap-2 bg-amber text-bg font-semibold 
-                 px-4 py-2 rounded-md hover:bg-amber/90 transition-colors text-sm"
-    >
-      {label}
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-        <path d="M6.5 1H11v4.5M11 1L5 7M2 3H1v8h8V9" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-      </svg>
-    </a>
-  )
-}
+```python
+# Tournament metadata (static — lives in db/seed_data.py or a JSON file)
+DK_TOURNAMENTS = [
+    {
+        "slug": "pdc-world-championship",
+        "name": "PDC World Championship",
+        "category": "major",
+        "format": "sets",
+        "sets_to_win": 7,
+        "month": "December-January",
+        "venue": "Alexandra Palace, London",
+        "betting_notes": [
+            "Early round upsets more common in sets format",
+            "Quarter/semi-final match markets offer best risk-adjusted edge",
+            "Seeded draw — identify bracket quadrants with early high-seed clashes",
+        ],
+    },
+    {
+        "slug": "premier-league-darts",
+        "name": "Premier League Darts",
+        "category": "premier_league",
+        "format": "legs",
+        "legs_to_win": 6,
+        "month": "February-May",
+        "venue": "Multiple UK/European cities",
+        "betting_notes": [
+            "Traveling players show measurable performance dips on European legs",
+            "Night Winner market (best of 11) has more variance — good for model edge",
+            "First 4 weeks form strongly predicts Play-Off qualification",
+        ],
+    },
+    # ... remaining 7 DK-covered tournaments
+]
 ```
 
 ### Deliverable
-A functional picks feed and two interactive tools.
+Picks feed and two interactive tools.
 
 ---
 
 ## Week 9–10: Tournament Hubs
 
 ### Tasks
-- [ ] Build `/tournaments` index
-- [ ] Build `/tournaments/[slug]` hub for each of the 9 DK-covered tournaments
-- [ ] Add schedule table, past winners, and form guide
-- [ ] Write 500-word tournament explainer for each (format, history, betting notes)
-- [ ] Add outright winner market odds table
-
-```ts
-// Static tournament metadata
-// apps/web/src/lib/tournaments.ts
-export const DK_TOURNAMENTS = [
-  {
-    slug: 'pdc-world-championship',
-    name: 'PDC World Championship',
-    shortName: 'Worlds',
-    category: 'major',
-    format: 'sets',
-    setsToWin: 7,  // final
-    month: 'December–January',
-    venue: 'Alexandra Palace, London',
-    dkSportKey: 'darts_pdc_world_championship',
-    description: `The biggest event in darts. Held every December–January at "Ally Pally," 
-    the World Championship draws the largest betting volume of any darts event on DraftKings 
-    by a significant margin. The sets format (rather than legs) increases variance in early 
-    rounds, creating value on underdog outright picks.`,
-    bettingNotes: [
-      'Early round upsets are more common than in legs-only formats — sets give underdogs more chances',
-      'MVG and Luke Littler have dominated recent editions — outrights on them typically offer little value',
-      'Quarter-final and semi-final match markets offer the best risk-adjusted edge opportunities',
-      'The draw is seeded — identify bracket quadrants where high seeds meet early',
-    ],
-  },
-  {
-    slug: 'premier-league-darts',
-    name: 'Premier League Darts',
-    shortName: 'Premier League',
-    category: 'premier_league',
-    format: 'legs',
-    legsToWin: 6,  // regular night (best of 11)
-    month: 'February–May',
-    venue: 'Multiple UK/European cities',
-    dkSportKey: 'darts_premier_league',
-    description: `A 16-week league featuring the top 8-9 PDC players. Weekly Thursday-night 
-    events across the UK and Europe. Best format for in-season modeling because the same players 
-    compete every week — form, fatigue, and travel effects are all trackable.`,
-    bettingNotes: [
-      'Players who travel far (e.g. Australian players to European legs) show measurable performance dips',
-      'The Night Winner market (best of 11 legs) has more variance than full-season markets — good for model edge',
-      'Form in the first 4 weeks is a strong predictor of Play-Off qualification',
-      'Home crowd effects are significant in cities where a player has local support',
-    ],
-  },
-  // ... remaining tournaments
-]
-```
+- [ ] Build `pages/1_Tournaments.py` — tournament index and hub
+- [ ] Populate all 9 DK-covered tournaments with schedule, past winners, form guide
+- [ ] Add tournament explainer text (format, history, betting notes)
+- [ ] Add outright winner odds table (from The Odds API)
 
 ### Deliverable
-9 tournament hub pages, all with SEO metadata, indexed by Google.
+9 tournament pages with schedules and context.
 
 ---
 
-## Week 11–12: Polish, SEO & Analytics
+## Week 11–12: Polish & Analytics
 
 ### Tasks
-- [ ] Add `sitemap.xml` generator (Next.js built-in)
-- [ ] Add `robots.txt`
-- [ ] Structured data (JSON-LD) on player and match pages
-- [ ] Add Plausible analytics snippet
-- [ ] Core Web Vitals audit (Lighthouse) — target LCP < 2.5s
-- [ ] Add error boundaries and loading skeletons throughout
-- [ ] Set up Sentry for error tracking
-- [ ] Write first 5 blog posts (tournament previews, model explainers)
-
-```ts
-// apps/web/src/app/players/[slug]/page.tsx — add JSON-LD
-function PlayerJsonLd({ player, stats }) {
-  const schema = {
-    '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: player.name,
-    nationality: player.nationality,
-    knowsAbout: 'Darts',
-    description: `Professional darts player. Elo rating: ${stats.elo}. Career 3-dart average: ${stats.career_avg}.`,
-  }
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
-    />
-  )
-}
-```
+- [ ] Add `st.set_page_config` metadata (page title, icon) consistently across all pages
+- [ ] Review all `st.cache_data` TTLs — ensure picks refresh every 5 min, player data every hour
+- [ ] Add error handling for missing DB rows (`st.warning` instead of crash)
+- [ ] Add logging for scraper failures (Python `logging` module → file)
+- [ ] Test on Streamlit Community Cloud: verify secrets, DB connection, scheduler
+- [ ] Write first 5 analysis posts (can be Streamlit pages or a linked blog)
 
 ---
 
@@ -288,10 +214,10 @@ function PlayerJsonLd({ player, stats }) {
 
 | Metric | Target |
 |--------|--------|
-| Google-indexed pages | 500+ |
-| Organic sessions/month | 2,000+ |
+| App pages shipped | 6+ |
+| Players profiled | 200+ |
 | Model Brier score | < 0.22 |
 | Model accuracy | > 60% |
-| DraftKings affiliate clicks | 200+/month |
-| Uptime | > 99.5% |
-| Page LCP | < 2.5s |
+| DraftKings affiliate clicks | 100+/month |
+| App uptime | > 99% |
+| Odds refresh latency | < 15 min |

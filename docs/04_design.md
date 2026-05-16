@@ -4,401 +4,191 @@
 
 **Aesthetic**: Dark, data-dense, editorial. Think Bloomberg Terminal meets FiveThirtyEight — serious numbers presented with confidence. Avoid generic sportsbook green/gold. Use deep navy + electric amber as primary palette. The site should feel like a quant built it, not a marketing team.
 
-**Typefaces**
-```css
-/* Import in globals.css */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+---
 
-:root {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace; /* for odds, probabilities, scores */
-}
+## Streamlit Theme (`.streamlit/config.toml`)
+
+```toml
+[theme]
+base                     = "dark"
+primaryColor             = "#f0a500"    # amber — darts bullseye gold
+backgroundColor          = "#0d1117"   # near-black, not pure black
+secondaryBackgroundColor = "#161b22"   # card/panel surface
+textColor                = "#e6edf3"   # near-white primary text
+font                     = "sans serif"
 ```
 
 ---
 
-## Color Tokens
+## Color Reference
 
-```css
-/* styles/tokens.css */
-:root {
-  /* Core palette */
-  --color-bg:           #0d1117;  /* near-black, not pure black */
-  --color-surface:      #161b22;  /* card/panel background */
-  --color-surface-2:    #21262d;  /* elevated surface */
-  --color-border:       #30363d;  /* subtle border */
-  --color-border-focus: #58a6ff;
+| Token | Hex | Use |
+|-------|-----|-----|
+| Amber (primary) | `#f0a500` | Picks, edge highlights, key metrics |
+| Amber dim | `#7d5600` | Muted amber backgrounds |
+| Blue | `#58a6ff` | Links, secondary player color in charts |
+| Edge positive | `#3fb950` | Positive edge values |
+| Edge negative | `#f85149` | Negative edge / value warnings |
+| Steam | `#f0a500` | Line movement alerts |
+| Text primary | `#e6edf3` | Main content |
+| Text secondary | `#8b949e` | Labels, captions |
+| Text muted | `#484f58` | De-emphasized text |
+| Surface | `#161b22` | Card / container background |
+| Surface 2 | `#21262d` | Elevated surface |
+| Border | `#30363d` | Subtle borders |
 
-  /* Brand */
-  --color-amber:        #f0a500;  /* primary accent — darts bullseye gold */
-  --color-amber-dim:    #7d5600;  /* muted amber for backgrounds */
-  --color-blue:         #58a6ff;  /* links, info */
-  
-  /* Semantic */
-  --color-edge-pos:     #3fb950;  /* positive edge — green */
-  --color-edge-neg:     #f85149;  /* negative edge — red */
-  --color-edge-neutral: #8b949e;  /* no edge */
-  --color-steam:        #f0a500;  /* line movement alert */
-  
-  /* Text */
-  --color-text-primary:   #e6edf3;
-  --color-text-secondary: #8b949e;
-  --color-text-muted:     #484f58;
+Use these in `st.markdown()` with inline styles or a custom CSS block injected via `st.html()` / `st.markdown("<style>...<style>", unsafe_allow_html=True)`.
 
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-6: 24px;
-  --space-8: 32px;
+---
 
-  /* Radii */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+## Custom CSS Injection
 
-  /* Transitions */
-  --transition: 120ms ease;
-}
+Inject a global stylesheet once in `app.py`:
+
+```python
+# app.py
+import streamlit as st
+
+def inject_styles():
+    st.markdown("""
+    <style>
+    /* Monospace for odds and probabilities */
+    .odds-value { font-family: 'JetBrains Mono', monospace; }
+
+    /* Positive / negative edge colors */
+    .edge-pos { color: #3fb950; font-weight: 600; }
+    .edge-neg { color: #f85149; font-weight: 600; }
+    .edge-neutral { color: #8b949e; }
+
+    /* Steam badge */
+    .steam-badge {
+        background: #7d5600;
+        color: #f0a500;
+        border: 1px solid #f0a500;
+        border-radius: 4px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    /* Stat label — small uppercase */
+    .stat-label {
+        font-size: 0.6875rem;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #8b949e;
+    }
+
+    /* Hide Streamlit default menu/footer for cleaner look */
+    #MainMenu { visibility: hidden; }
+    footer    { visibility: hidden; }
+    </style>
+    """, unsafe_allow_html=True)
 ```
 
 ---
 
-## Tailwind Config
+## Layout Patterns
 
-```js
-// tailwind.config.ts
-import type { Config } from 'tailwindcss'
+### Full-width data pages (Match Center, Picks)
+```python
+st.set_page_config(layout="wide")
+```
 
-const config: Config = {
-  content: ['./src/**/*.{ts,tsx}'],
-  theme: {
-    extend: {
-      colors: {
-        bg:         '#0d1117',
-        surface:    '#161b22',
-        surface2:   '#21262d',
-        border:     '#30363d',
-        amber:      '#f0a500',
-        'amber-dim':'#7d5600',
-        'edge-pos': '#3fb950',
-        'edge-neg': '#f85149',
-        steam:      '#f0a500',
-        primary:    '#e6edf3',
-        secondary:  '#8b949e',
-        muted:      '#484f58',
-      },
-      fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-      },
-      fontSize: {
-        'stat': ['1.75rem', { lineHeight: '1', fontWeight: '600', letterSpacing: '-0.02em' }],
-        'label': ['0.6875rem', { lineHeight: '1.4', fontWeight: '500', letterSpacing: '0.06em' }],
-      },
-    },
-  },
-  plugins: [],
-}
-export default config
+### Stat columns (4-up for key metrics)
+```python
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("3-dart avg", "96.5")
+c2.metric("Checkout %", "42.3%")
+c3.metric("180s/leg",   "0.123")
+c4.metric("Elo",        "1847")
+```
+
+### Head-to-head comparison
+```python
+def stat_bar(label: str, v1: float, v2: float, p1: str, p2: str, fmt: str = ".2f"):
+    total = v1 + v2 or 1
+    p1_pct = v1 / total * 100
+    winner = p1 if v1 > v2 else p2
+    cols = st.columns([3, 6, 3])
+    cols[0].write(f"**{format(v1, fmt)}**" if v1 >= v2 else format(v1, fmt))
+    cols[1].progress(int(p1_pct), text=label)
+    cols[2].write(f"**{format(v2, fmt)}**" if v2 > v1 else format(v2, fmt))
+```
+
+### Container with border (Streamlit 1.30+)
+```python
+with st.container(border=True):
+    st.write("Match card content here")
+```
+
+### Expander for secondary info
+```python
+with st.expander("Why this pick?"):
+    for reason in pick["reasoning"]:
+        st.write(f"- {reason}")
 ```
 
 ---
 
-## Core Components
+## Chart Style (Plotly)
 
-### StatBar — head-to-head comparison
+All charts use `template="plotly_dark"` to match the dark theme, with amber as the primary series color:
 
-```tsx
-// components/ui/StatBar.tsx
-interface StatBarProps {
-  label: string
-  p1Value: number
-  p2Value: number
-  p1Name: string
-  p2Name: string
-  format?: 'number' | 'percent' | 'decimal'
-  higherIsBetter?: boolean
-  precision?: number
-}
+```python
+import plotly.express as px
 
-export function StatBar({ label, p1Value, p2Value, p1Name, p2Name, format = 'number', higherIsBetter = true, precision = 1 }: StatBarProps) {
-  const total = p1Value + p2Value || 1
-  const p1Pct = (p1Value / total) * 100
-  const p2Pct = 100 - p1Pct
-
-  const p1Better = higherIsBetter ? p1Value > p2Value : p1Value < p2Value
-  const p2Better = higherIsBetter ? p2Value > p1Value : p2Value < p1Value
-
-  const fmt = (v: number) => {
-    if (format === 'percent') return `${(v * 100).toFixed(precision)}%`
-    if (format === 'decimal') return v.toFixed(precision + 1)
-    return v.toFixed(precision)
-  }
-
-  return (
-    <div className="py-2">
-      <div className="flex justify-between text-label uppercase tracking-widest text-secondary mb-1">
-        <span className={p1Better ? 'text-primary font-medium' : ''}>{fmt(p1Value)}</span>
-        <span>{label}</span>
-        <span className={p2Better ? 'text-primary font-medium' : ''}>{fmt(p2Value)}</span>
-      </div>
-      <div className="flex h-1.5 rounded-full overflow-hidden bg-surface2">
-        <div
-          className={`h-full transition-all duration-500 ${p1Better ? 'bg-amber' : 'bg-secondary'}`}
-          style={{ width: `${p1Pct}%` }}
-        />
-        <div
-          className={`h-full transition-all duration-500 ${p2Better ? 'bg-amber' : 'bg-secondary'}`}
-          style={{ width: `${p2Pct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
+def elo_chart(df):
+    fig = px.line(
+        df, x="recorded_at", y="rating",
+        title="Elo Rating History",
+        template="plotly_dark",
+        color_discrete_sequence=["#f0a500"],
+    )
+    fig.update_layout(
+        paper_bgcolor="#0d1117",
+        plot_bgcolor="#0d1117",
+        xaxis=dict(gridcolor="#30363d"),
+        yaxis=dict(gridcolor="#30363d"),
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+    st.plotly_chart(fig, use_container_width=True)
 ```
 
-### EdgeBadge
-
-```tsx
-// components/ui/EdgeBadge.tsx
-interface EdgeBadgeProps {
-  edgePct: number  // e.g. 4.2 means +4.2% edge
-  size?: 'sm' | 'md' | 'lg'
-}
-
-export function EdgeBadge({ edgePct, size = 'md' }: EdgeBadgeProps) {
-  const isPos = edgePct > 0
-  const isHigh = Math.abs(edgePct) > 5
-
-  const sizeClasses = {
-    sm: 'text-xs px-1.5 py-0.5',
-    md: 'text-sm px-2 py-1',
-    lg: 'text-base px-3 py-1.5',
-  }
-
-  return (
-    <span className={`
-      font-mono font-medium rounded ${sizeClasses[size]}
-      ${isPos
-        ? isHigh ? 'bg-edge-pos/20 text-edge-pos ring-1 ring-edge-pos/40' : 'bg-edge-pos/10 text-edge-pos'
-        : 'bg-edge-neg/10 text-edge-neg'
-      }
-    `}>
-      {isPos ? '+' : ''}{edgePct.toFixed(1)}%
-    </span>
-  )
-}
-```
-
-### OddsDisplay
-
-```tsx
-// components/ui/OddsDisplay.tsx
-// Renders American odds in monospace with color coding
-
-interface OddsDisplayProps {
-  odds: number
-  size?: 'sm' | 'md' | 'lg'
-  showSign?: boolean
-}
-
-export function OddsDisplay({ odds, size = 'md', showSign = true }: OddsDisplayProps) {
-  const isFav = odds < 0
-  const formatted = isFav ? odds.toString() : `+${odds}`
-
-  const sizeClasses = { sm: 'text-sm', md: 'text-base', lg: 'text-xl' }
-
-  return (
-    <span className={`font-mono font-medium ${sizeClasses[size]} ${isFav ? 'text-secondary' : 'text-amber'}`}>
-      {formatted}
-    </span>
-  )
-}
-```
-
-### MatchCard
-
-```tsx
-// components/ui/MatchCard.tsx
-export function MatchCard({ match, pick, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full text-left bg-surface border border-border rounded-lg p-4 
-                 hover:border-amber/40 hover:bg-surface2 transition-all duration-150 
-                 focus:outline-none focus:ring-2 focus:ring-amber/40"
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-label uppercase tracking-widest text-secondary">
-          {match.tournament} · {match.round}
-        </span>
-        {match.isLive && (
-          <span className="flex items-center gap-1 text-edge-pos text-xs font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-edge-pos animate-pulse" />
-            Live
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex-1">
-          <p className="text-primary font-medium">{match.player1}</p>
-          <OddsDisplay odds={match.p1Odds} size="sm" />
-        </div>
-
-        <div className="text-center text-secondary text-sm font-mono">
-          {match.isLive ? `${match.score1} – ${match.score2}` : 'vs'}
-        </div>
-
-        <div className="flex-1 text-right">
-          <p className="text-primary font-medium">{match.player2}</p>
-          <OddsDisplay odds={match.p2Odds} size="sm" />
-        </div>
-      </div>
-
-      {pick && (
-        <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-          <span className="text-secondary text-sm">
-            Model pick: <span className="text-primary font-medium">{pick.player}</span>
-          </span>
-          <EdgeBadge edgePct={pick.edgePct} size="sm" />
-        </div>
-      )}
-    </button>
-  )
-}
-```
-
-### PlayerAvatar
-
-```tsx
-// components/ui/PlayerAvatar.tsx
-// Flag + name initials since we won't have player photos initially
-
-const FLAG_EMOJI: Record<string, string> = {
-  NED: '🇳🇱', ENG: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', WAL: '🏴󠁧󠁢󠁷󠁬󠁳󠁿', SCO: '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
-  AUS: '🇦🇺', GER: '🇩🇪', BEL: '🇧🇪', IRL: '🇮🇪',
-  NZL: '🇳🇿', USA: '🇺🇸', CAN: '🇨🇦', AUT: '🇦🇹',
-}
-
-export function PlayerAvatar({ player, size = 40 }) {
-  const initials = player.name.split(' ').map(n => n[0]).join('').slice(0, 2)
-  const flag = FLAG_EMOJI[player.nationality] ?? '🎯'
-
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="flex items-center justify-center rounded-full bg-surface2 border border-border text-primary font-medium text-sm flex-shrink-0"
-        style={{ width: size, height: size, fontSize: size * 0.35 }}
-      >
-        {initials}
-      </div>
-      <div>
-        <p className="text-primary font-medium leading-tight">{player.name}</p>
-        <p className="text-secondary text-xs">{flag} {player.nationality}</p>
-      </div>
-    </div>
-  )
-}
+For H2H / odds movement (two series):
+```python
+color_discrete_sequence=["#f0a500", "#58a6ff"]   # amber = P1, blue = P2
 ```
 
 ---
 
-## Layout
+## Typography Guidelines
 
-```tsx
-// components/layout/AppLayout.tsx
-export function AppLayout({ children }) {
-  return (
-    <div className="min-h-screen bg-bg text-primary font-sans">
-      <TopNav />
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <LiveEventBanner />  {/* sticky when there's a live match */}
-        {children}
-      </div>
-      <Footer />
-    </div>
-  )
-}
-
-// components/layout/TopNav.tsx
-export function TopNav() {
-  return (
-    <nav className="border-b border-border bg-bg/95 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Logo />
-          <NavLink href="/tournaments">Tournaments</NavLink>
-          <NavLink href="/picks">Picks</NavLink>
-          <NavLink href="/players">Players</NavLink>
-          <NavLink href="/odds">Odds</NavLink>
-          <NavLink href="/tools">Tools</NavLink>
-        </div>
-        <div className="flex items-center gap-3">
-          <LiveIndicator />
-          <DKAffiliateButton />
-        </div>
-      </div>
-    </nav>
-  )
-}
-```
+- **Numbers / odds / probabilities**: use `st.code()` inline, or inject the `odds-value` CSS class via markdown — monospace reads better for data
+- **Labels**: use `st.caption()` for secondary context below metrics
+- **Warnings / alerts**: use `st.warning()` (steam moves), `st.success()` (model picks), `st.info()` (neutral)
+- **Disclaimers**: always use `st.caption()` — keeps it visible but de-emphasized
 
 ---
 
-## Chart Theming (Recharts)
+## Page Header Pattern
 
-```tsx
-// lib/chartTheme.ts
-export const CHART_THEME = {
-  background: 'transparent',
-  gridColor: '#30363d',
-  textColor: '#8b949e',
-  axisColor: '#30363d',
-  tooltipBg: '#161b22',
-  tooltipBorder: '#30363d',
-  p1Color: '#f0a500',   // amber
-  p2Color: '#58a6ff',   // blue
-  edgePosColor: '#3fb950',
-  edgeNegColor: '#f85149',
-}
-
-export const defaultChartProps = {
-  style: { background: 'transparent' },
-}
-
-export const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="bg-surface border border-border rounded-md p-2 text-sm">
-      <p className="text-secondary mb-1">{label}</p>
-      {payload.map((p, i) => (
-        <p key={i} style={{ color: p.color }} className="font-mono">
-          {p.name}: {p.value}
-        </p>
-      ))}
-    </div>
-  )
-}
+```python
+st.title("🎯 Darts Analytics")
+st.caption("Model-driven picks and stats for DraftKings-covered PDC tournaments.")
+st.divider()
 ```
 
----
+## Responsible Gambling Footer Pattern
 
-## Responsive Breakpoints
+Include on every page that shows picks or odds:
 
-```
-Mobile  (<640px):  Single column, collapsible stat panels, bottom tab nav
-Tablet  (640–1024px): 2-col match grid, sidebar stats
-Desktop (>1024px): 3-col layout: sidebar | main | sidebar
-```
-
-```tsx
-// Match center layout example
-<div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_240px] gap-6">
-  <aside className="hidden lg:block">  {/* Player 1 deep stats */}  </aside>
-  <main>  {/* Match center */}  </main>
-  <aside className="hidden lg:block">  {/* Player 2 deep stats */}  </aside>
-</div>
+```python
+st.divider()
+st.caption(
+    "21+ only. Must be located in a jurisdiction where sports betting is legal. "
+    "Model outputs are for informational purposes only — not betting advice. "
+    "Gambling problem? Call 1-800-522-4700 or visit [ncpgambling.org](https://ncpgambling.org)."
+)
 ```

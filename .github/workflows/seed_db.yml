@@ -1,0 +1,79 @@
+name: Seed Database
+
+# Runs nightly to rebuild bullziq.db from real PDC data and commits it
+# so users always load a pre-seeded database — no cold-start wait.
+#
+# Also triggers on manual dispatch or when the seed/scraper files change.
+# The committed DB is tracked via the !data_files/bullziq.db gitignore override.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC daily (off-peak for dartsdatabase.co.uk)
+  workflow_dispatch:       # manual trigger via GitHub Actions UI
+  push:
+    branches: [main]
+    paths:
+      - "db/seed_real.py"
+      - "scrapers/dartsdatabase.py"
+      - "scrapers/odds_api.py"
+      - ".github/workflows/seed_db.yml"
+
+permissions:
+  contents: write   # needed to commit the DB back to the repo
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45   # dartsdatabase scrape is ~2–5 min; odds fetch is instant
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Full rebuild from 2015 on schedule/manual/file-change triggers
+      - name: Run full real-data seed
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python -m db.seed_real --start-year 2015
+
+      # Verify the DB was created and has data
+      - name: Verify database
+        run: |
+          python - <<'EOF'
+          import sqlite3, sys
+          from pathlib import Path
+          db = Path("data_files/bullziq.db")
+          if not db.exists():
+              print("ERROR: bullziq.db not found")
+              sys.exit(1)
+          conn = sqlite3.connect(str(db))
+          matches = conn.execute("SELECT COUNT(*) FROM matches").fetchone()[0]
+          players = conn.execute("SELECT COUNT(*) FROM players").fetchone()[0]
+          conn.close()
+          print(f"DB OK — {players} players, {matches} matches")
+          if matches < 10:
+              print("WARNING: very few matches — scrape may have been blocked")
+          EOF
+
+      # Commit the pre-seeded DB and flag back to the repo
+      # [skip ci] prevents this commit from re-triggering the workflow
+      - name: Commit seeded database
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data_files/bullziq.db data_files/db_is_real.flag
+          git diff --staged --quiet \
+            && echo "No changes to commit" \
+            || git commit -m "chore(db): refresh seeded database [skip ci]"
+          git push

@@ -1,422 +1,289 @@
 # 03 — Site Features & User Flows
 
-## Page Map
+## Page Map (Streamlit Pages)
 
 ```
-/                           Home — live event banner, today's picks, top movers
-/tournaments                All DK-covered tournaments with schedules
-/tournaments/:slug          Tournament hub (schedule, bracket, form guide)
-/players                    Player index
-/players/:slug              Player profile (stats, Elo chart, H2H, form)
-/matches/:id                Match center (pre-match analysis + live if active)
-/picks                      Today's model picks with edge %
-/tools/edge-calculator      Manual odds vs model probability
-/tools/h2h                  Head-to-head comparison tool
-/tools/180s-calculator      180s over/under expected value calc
-/stats/leaderboard          Season stat leaders (avg, checkout %, 180s)
-/stats/trends               Long-run trends, format analysis
-/odds                       Live odds tracker with line movement
-/blog                       Analysis articles, tournament previews
-/api/v1/*                   Public API (rate-limited, free tier)
+app.py                      Home — live event banner, today's picks, top movers
+pages/1_Tournaments.py      All DK-covered tournaments with schedules
+pages/2_Players.py          Player index + profile browser (selectbox to drill in)
+pages/3_Matches.py          Match center (pre-match analysis + live scores)
+pages/4_Picks.py            Today's model picks with edge % and filter slider
+pages/5_Odds.py             Live odds tracker with line movement chart
+pages/6_Tools.py            Edge calculator, H2H tool, 180s over/under calc
+```
+
+Each page is a self-contained Python file. Navigation is handled by Streamlit's built-in sidebar page list.
+
+---
+
+## Feature 1 — Match Center (`pages/3_Matches.py`)
+
+The most important page. Every DK-covered match needs one.
+
+```python
+# components/match_center.py
+import streamlit as st
+import plotly.graph_objects as go
+from db.queries import get_match, get_odds_history, get_h2h_history
+from models.props_model import calculate_edge
+
+def render_match_center(match_id: int):
+    match    = get_match(match_id)
+    odds_hist = get_odds_history(match_id)
+    h2h      = get_h2h_history(match["player1_id"], match["player2_id"])
+
+    latest_odds = odds_hist[-1] if odds_hist else None
+    model_prob  = match.get("model_prob_p1")
+
+    if model_prob and latest_odds:
+        edge = calculate_edge(model_prob, latest_odds["price"])
+        if edge["has_edge"]:
+            pick_name = match["player1"] if edge["edge_side"] == "p1" else match["player2"]
+            st.success(
+                f"**Model Pick: {pick_name}** — {edge['edge_pct']:.1f}% edge  "
+                f"(Our prob: {edge['our_prob']*100:.1f}% vs DK implied: {edge['dk_implied']*100:.1f}%)"
+            )
+
+    # Stat comparison bars
+    st.subheader("Key Stats")
+    cols = st.columns(3)
+    stats = [
+        ("3-dart avg (last 20)", match["avg1_recent"], match["avg2_recent"]),
+        ("Checkout %",           match["co_pct1"],      match["co_pct2"]),
+        ("180s per leg",         match["rate_180_1"],   match["rate_180_2"]),
+    ]
+    for col, (label, v1, v2) in zip(cols, stats):
+        with col:
+            st.metric(f"{match['player1']}", f"{v1:.2f}")
+            st.caption(label)
+            st.metric(f"{match['player2']}", f"{v2:.2f}")
+
+    # H2H history
+    st.subheader(f"H2H History ({len(h2h)} meetings)")
+    if h2h:
+        import pandas as pd
+        df = pd.DataFrame(h2h)[["year", "tournament", "round", "score1", "score2", "winner"]]
+        st.dataframe(df, hide_index=True, use_container_width=True)
+
+    # Odds movement chart
+    if odds_hist:
+        render_odds_chart(odds_hist, match["player1"], match["player2"])
+
+    # 180s prop calculator embedded
+    st.subheader("180s Calculator")
+    render_180s_calc(
+        p1_rate=match.get("rate_180_1", 0.10),
+        p2_rate=match.get("rate_180_2", 0.10),
+        legs_to_win=match.get("legs_to_win", 6),
+    )
+
+    st.caption(
+        "21+ only where legal. Model outputs are informational, not betting advice. "
+        "Gambling problem? Call 1-800-GAMBLER."
+    )
 ```
 
 ---
 
-## Feature 1 — Match Center
+## Feature 2 — Player Profile (`pages/2_Players.py`)
 
-The most important page. Should exist for every DK-covered match.
+```python
+# components/player_profile.py
+import streamlit as st
+import plotly.express as px
+from db.queries import get_player, get_player_stats, get_elo_history, get_recent_matches
 
-```tsx
-// components/MatchCenter.tsx
-import { Match, PlayerStats, OddsSnapshot } from "@/types"
+def render_player_profile(slug: str):
+    player     = get_player(slug)
+    stats      = get_player_stats(player["id"])
+    elo_hist   = get_elo_history(player["id"])
+    recent     = get_recent_matches(player["id"], limit=20)
 
-interface MatchCenterProps {
-  match: Match
-  player1Stats: PlayerStats
-  player2Stats: PlayerStats
-  h2hHistory: Match[]
-  oddsHistory: OddsSnapshot[]
-  modelProbability: number  // our model's p1 win prob
-}
+    if not player:
+        st.error("Player not found.")
+        return
 
-export function MatchCenter({
-  match, player1Stats, player2Stats,
-  h2hHistory, oddsHistory, modelProbability
-}: MatchCenterProps) {
-  const dkOdds = oddsHistory[oddsHistory.length - 1]
-  const edge = calculateEdge(modelProbability, dkOdds?.p1_odds)
+    # Header
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.metric("Elo Rating", f"{stats['elo']:.0f}", delta=f"#{stats['elo_rank']} ranked")
+    with col2:
+        st.subheader(f"{player['name']} — \"{player.get('nickname', '')}\"")
+        st.caption(f"{player.get('nationality', '')} · PDC Tour")
 
-  return (
-    <div className="match-center">
-      <MatchHeader match={match} />
-      
-      {/* Model Pick Banner */}
-      {edge.has_edge && (
-        <EdgeBanner
-          player={edge.edge_side === "p1" ? match.player1 : match.player2}
-          edgePct={edge.edge_pct}
-          ourProb={edge.our_prob}
-          dkOdds={edge.dk_odds}
-        />
-      )}
-      
-      {/* Head-to-head stat bars */}
-      <StatComparison
-        label="3-dart avg (last 20)"
-        p1Value={player1Stats.avg_3dart_recent}
-        p2Value={player2Stats.avg_3dart_recent}
-        format="number"
-        higherIsBetter
-      />
-      <StatComparison
-        label="Checkout %"
-        p1Value={player1Stats.checkout_pct_recent}
-        p2Value={player2Stats.checkout_pct_recent}
-        format="percent"
-        higherIsBetter
-      />
-      <StatComparison
-        label="180s per leg"
-        p1Value={player1Stats.avg_180s_per_leg}
-        p2Value={player2Stats.avg_180s_per_leg}
-        format="decimal"
-        higherIsBetter
-      />
-      
-      {/* H2H History */}
-      <H2HRecord history={h2hHistory} p1={match.player1} p2={match.player2} />
-      
-      {/* Odds movement chart */}
-      <OddsMovementChart snapshots={oddsHistory} />
-      
-      {/* Tournament form (last 5 matches each) */}
-      <RecentForm player1Stats={player1Stats} player2Stats={player2Stats} />
-      
-      {/* 180s prop calculator */}
-      <OneEightiesCalculator
-        p1Rate={player1Stats.avg_180s_per_leg}
-        p2Rate={player2Stats.avg_180s_per_leg}
-        format={match.format}
-        legsToWin={match.legs_to_win}
-      />
-    </div>
-  )
-}
+    # Stat cards
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Career avg", f"{stats['career_avg']:.2f}")
+    c2.metric("Checkout %", f"{stats['checkout_pct']*100:.1f}%")
+    c3.metric("180s/leg",   f"{stats['avg_180s_per_leg']:.3f}")
+    c4.metric("DK win rate", f"{stats['dk_win_rate']*100:.1f}%")
+
+    # Elo history chart
+    import pandas as pd
+    df_elo = pd.DataFrame(elo_hist)
+    fig = px.line(df_elo, x="recorded_at", y="rating",
+                  title="Elo Rating History", template="plotly_dark",
+                  color_discrete_sequence=["#f0a500"])
+    fig.update_layout(xaxis_title="", yaxis_title="Elo")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Recent matches table
+    st.subheader("Last 20 Matches")
+    df_m = pd.DataFrame(recent)[["match_date", "tournament", "round", "opponent", "score", "result"]]
+    st.dataframe(df_m, hide_index=True, use_container_width=True)
 ```
 
 ---
 
-## Feature 2 — Player Profile Page
+## Feature 3 — Picks Feed (`pages/4_Picks.py`)
 
-```tsx
-// components/PlayerProfile.tsx
-// Route: /players/michael-van-gerwen
+```python
+# pages/4_Picks.py
+import streamlit as st
+from db.queries import get_todays_picks
 
-export function PlayerProfile({ player, stats, matches, eloHistory }) {
-  return (
-    <div className="player-profile">
-      {/* Header */}
-      <div className="player-header">
-        <Flag nationality={player.nationality} />
-        <h1>{player.name}</h1>
-        <p className="nickname">"{player.nickname}"</p>
-        <EloRatingBadge rating={stats.elo} rank={stats.elo_rank} />
-      </div>
-      
-      {/* Stat Cards */}
-      <div className="stats-grid">
-        <StatCard label="3-dart avg (career)" value={stats.career_avg} />
-        <StatCard label="3-dart avg (last 20)" value={stats.avg_last20} />
-        <StatCard label="Checkout %" value={`${stats.checkout_pct}%`} />
-        <StatCard label="180s per leg" value={stats.avg_180s_per_leg} />
-        <StatCard label="Win rate (DK tournaments)" value={`${stats.dk_win_rate}%`} />
-        <StatCard label="Major titles" value={stats.major_titles} />
-      </div>
-      
-      {/* Elo over time — D3 or Recharts line chart */}
-      <EloHistoryChart data={eloHistory} />
-      
-      {/* Tournament-by-tournament breakdown */}
-      <TournamentBreakdownTable player={player} />
-      
-      {/* Recent matches */}
-      <RecentMatchesList matches={matches.slice(0, 20)} />
-      
-      {/* H2H vs top 16 — heatmap style table */}
-      <H2HMatrix player={player} top16Only />
-    </div>
-  )
-}
+st.set_page_config(page_title="Today's Picks | Darts Analytics", layout="wide")
+st.title("Today's Model Picks")
+st.caption(
+    ":orange[Model output only. Not betting advice.] "
+    "21+ only where legal. Gambling problem? Call 1-800-GAMBLER."
+)
+
+min_edge = st.slider("Minimum edge %", 0, 10, 2) / 100
+market   = st.selectbox("Market", ["All", "H2H", "180s Over", "180s Under"])
+
+picks = get_todays_picks(min_edge=min_edge, market=None if market == "All" else market)
+
+if not picks:
+    st.info("No picks meet the threshold today.")
+    st.stop()
+
+for pick in picks:
+    conf_color = "green" if pick["edge_pct"] >= 5 else ("orange" if pick["edge_pct"] >= 2 else "gray")
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns([4, 2, 2, 2])
+        c1.write(f"**{pick['pick']}** to beat **{pick['opponent']}**")
+        c1.caption(f"{pick['tournament']} · {pick['round']}")
+        c2.metric("DK Odds",  f"{pick['dk_odds']:+d}")
+        c3.metric("Our Prob", f"{pick['our_prob']*100:.1f}%")
+        c4.metric("Edge", f":{conf_color}[{pick['edge_pct']:.1f}%]")
+
+        with st.expander("Why this pick?"):
+            for reason in pick["reasoning"]:
+                st.write(f"- {reason}")
 ```
 
 ---
 
-## Feature 3 — Live Picks Feed
+## Feature 4 — Odds Movement Chart (`components/odds_chart.py`)
 
-```tsx
-// components/PicksFeed.tsx
-// Shows all today's model picks with edge calculations
+```python
+# components/odds_chart.py
+import streamlit as st
+import plotly.graph_objects as go
 
-interface Pick {
-  match: Match
-  ourProb: number
-  dkOdds: number
-  edgePct: number
-  confidence: "high" | "medium" | "low"  // high = edge > 5%, medium = 2-5%
-  pickSide: "p1" | "p2"
-  market: "h2h" | "180s_over" | "180s_under"
-  reasoning: string[]  // bullet points for display
-}
+def render_odds_chart(snapshots: list[dict], p1_name: str, p2_name: str):
+    times  = [s["snapshot_time"] for s in snapshots]
+    p1_imp = [s["p1_implied"] * 100 for s in snapshots]
+    p2_imp = [s["p2_implied"] * 100 for s in snapshots]
 
-export function PicksFeed({ picks }: { picks: Pick[] }) {
-  const sorted = [...picks].sort((a, b) => b.edgePct - a.edgePct)
-  
-  return (
-    <div className="picks-feed">
-      <div className="picks-header">
-        <h2>Today's Picks</h2>
-        <span className="disclaimer">Model output only. Not betting advice.</span>
-      </div>
-      
-      {sorted.map(pick => (
-        <PickCard
-          key={pick.match.id}
-          pick={pick}
-          onClickMatch={() => navigate(`/matches/${pick.match.id}`)}
-        />
-      ))}
-    </div>
-  )
-}
+    opening = p1_imp[0]
+    current = p1_imp[-1]
+    shift   = current - opening
 
-// Individual pick card
-function PickCard({ pick, onClickMatch }) {
-  const confidenceColors = {
-    high: "text-green-600 bg-green-50",
-    medium: "text-amber-600 bg-amber-50",
-    low: "text-gray-500 bg-gray-50",
-  }
-  
-  return (
-    <div className="pick-card" onClick={onClickMatch}>
-      <div className="pick-matchup">
-        <span>{pick.match.player1}</span>
-        <span className="vs">vs</span>
-        <span>{pick.match.player2}</span>
-      </div>
-      
-      <div className="pick-recommendation">
-        <strong>{pick.pickSide === "p1" ? pick.match.player1 : pick.match.player2}</strong>
-        <span className={`confidence-badge ${confidenceColors[pick.confidence]}`}>
-          {pick.confidence} confidence
-        </span>
-      </div>
-      
-      <div className="pick-odds-row">
-        <div>
-          <span className="label">Model prob</span>
-          <span className="value">{(pick.ourProb * 100).toFixed(1)}%</span>
-        </div>
-        <div>
-          <span className="label">DK odds</span>
-          <span className="value">{formatAmericanOdds(pick.dkOdds)}</span>
-        </div>
-        <div>
-          <span className="label">Edge</span>
-          <span className={`value ${pick.edgePct > 0 ? "text-green-600" : "text-red-500"}`}>
-            {pick.edgePct > 0 ? "+" : ""}{pick.edgePct.toFixed(1)}%
-          </span>
-        </div>
-      </div>
-      
-      <ul className="reasoning">
-        {pick.reasoning.map((r, i) => <li key={i}>{r}</li>)}
-      </ul>
-    </div>
-  )
-}
+    if abs(shift) >= 3:
+        direction = p1_name if shift > 0 else p2_name
+        st.warning(f"🔥 Steam move detected: {direction} moved {abs(shift):.1f}pp implied")
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=times, y=p1_imp, name=p1_name, line=dict(color="#f0a500")))
+    fig.add_trace(go.Scatter(x=times, y=p2_imp, name=p2_name, line=dict(color="#58a6ff")))
+    fig.add_hline(y=50, line_dash="dash", line_color="#8b949e")
+    fig.update_layout(
+        title="Line Movement",
+        template="plotly_dark",
+        xaxis_title="",
+        yaxis_title="Implied Win %",
+        yaxis=dict(range=[0, 100]),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption(f"Opening: {opening:.1f}% → Current: {current:.1f}% ({shift:+.1f}pp)")
 ```
 
 ---
 
-## Feature 4 — Odds Movement Tracker
+## Feature 5 — 180s Calculator (`pages/6_Tools.py`)
 
-```tsx
-// components/OddsMovementChart.tsx
-// Recharts line chart showing DK line movement for a match
+```python
+# Inside pages/6_Tools.py
+import streamlit as st
+import math
 
-import { LineChart, Line, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts"
+def render_180s_calc(p1_rate: float = 0.12, p2_rate: float = 0.10, legs_to_win: int = 6):
+    st.subheader("180s Over/Under Calculator")
 
-export function OddsMovementChart({ snapshots }) {
-  const data = snapshots.map(s => ({
-    time: new Date(s.snapshot_time).toLocaleTimeString(),
-    p1_implied: impliedProb(s.p1_odds),
-    p2_implied: impliedProb(s.p2_odds),
-    p1_odds: s.p1_odds,
-  }))
-  
-  const openingLine = data[0]?.p1_implied
-  const currentLine = data[data.length - 1]?.p1_implied
-  const moved = Math.abs(currentLine - openingLine) > 0.02  // flag >2% move
-  
-  return (
-    <div className="odds-movement">
-      <h3>
-        Line Movement
-        {moved && <span className="steam-badge">🔥 Steam move detected</span>}
-      </h3>
-      <LineChart data={data} width={600} height={200}>
-        <XAxis dataKey="time" />
-        <YAxis domain={[0, 1]} tickFormatter={v => `${(v*100).toFixed(0)}%`} />
-        <Tooltip formatter={(v, name) => [`${(v*100).toFixed(1)}%`, name]} />
-        <ReferenceLine y={0.5} stroke="#ccc" strokeDasharray="4 4" />
-        <Line type="monotone" dataKey="p1_implied" stroke="#3b82f6" name="P1 win prob" dot={false} />
-      </LineChart>
-      <p className="line-note">
-        Opening: {(openingLine * 100).toFixed(1)}% → 
-        Current: {(currentLine * 100).toFixed(1)}%
-        {moved && ` (${((currentLine - openingLine) * 100).toFixed(1)}% shift)`}
-      </p>
-    </div>
-  )
-}
+    c1, c2, c3 = st.columns(3)
+    p1_rate    = c1.number_input("P1 — 180s per leg", value=p1_rate, min_value=0.0, max_value=0.5, step=0.005, format="%.3f")
+    p2_rate    = c2.number_input("P2 — 180s per leg", value=p2_rate, min_value=0.0, max_value=0.5, step=0.005, format="%.3f")
+    legs_to_win = c3.number_input("Legs to win", value=legs_to_win, min_value=2, max_value=13, step=1)
+    dk_line    = st.number_input("DraftKings total line", value=10.5, step=0.5)
 
-function impliedProb(americanOdds: number): number {
-  if (americanOdds > 0) return 100 / (americanOdds + 100)
-  return Math.abs(americanOdds) / (Math.abs(americanOdds) + 100)
-}
+    expected_legs   = legs_to_win * 1.6
+    combined_lambda = (p1_rate + p2_rate) * expected_legs
+
+    prob_over  = 1 - poisson_cdf(math.floor(dk_line), combined_lambda)
+    prob_under = 1 - prob_over
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Expected 180s", f"{combined_lambda:.1f}")
+    r2.metric("Prob OVER",     f"{prob_over*100:.1f}%")
+    r3.metric("Fair OVER odds", to_american(prob_over))
+    r4.metric("Fair UNDER odds", to_american(prob_under))
+
+def poisson_cdf(k: int, lam: float) -> float:
+    total, term = 0.0, math.exp(-lam)
+    for i in range(k + 1):
+        total += term
+        term  *= lam / (i + 1)
+    return total
+
+def to_american(prob: float) -> str:
+    if prob >= 0.5:
+        return f"-{round((prob / (1 - prob)) * 100)}"
+    return f"+{round(((1 - prob) / prob) * 100)}"
 ```
 
 ---
 
-## Feature 5 — 180s Calculator (Interactive Tool)
+## Feature 6 — Tournament Hub (`pages/1_Tournaments.py`)
 
-This is a shareable, linkable tool that drives SEO and engagement.
+```python
+# pages/1_Tournaments.py
+import streamlit as st
+import pandas as pd
+from db.queries import get_tournaments, get_tournament_schedule
 
-```tsx
-// pages/tools/180s-calculator.tsx
+st.set_page_config(page_title="Tournaments | Darts Analytics", layout="wide")
+st.title("DraftKings-Covered Tournaments")
 
-export function OneEightiesCalculator() {
-  const [p1Rate, setP1Rate] = useState(0.12)
-  const [p2Rate, setP2Rate] = useState(0.10)
-  const [legsToWin, setLegsToWin] = useState(6)
-  const [totalLine, setTotalLine] = useState(10.5)
-  
-  const expectedLegs = legsToWin * 1.6  // typical match goes ~80% of max legs
-  const p1Expected = p1Rate * expectedLegs
-  const p2Expected = p2Rate * expectedLegs
-  const combinedExpected = p1Expected + p2Expected
-  
-  // Poisson over probability
-  const probOver = 1 - poissonCDF(Math.floor(totalLine), combinedExpected)
-  const probUnder = 1 - probOver
-  
-  // Fair odds
-  const fairOverOdds = toAmericanOdds(probOver)
-  const fairUnderOdds = toAmericanOdds(probUnder)
-  
-  return (
-    <div className="calculator">
-      <h1>180s Over/Under Calculator</h1>
-      <p>Compare DraftKings' 180s total against expected value from player rates.</p>
-      
-      <div className="inputs">
-        <SliderInput
-          label="Player 1 — 180s per leg"
-          value={p1Rate} min={0} max={0.3} step={0.005}
-          onChange={setP1Rate}
-          display={v => v.toFixed(3)}
-        />
-        <SliderInput
-          label="Player 2 — 180s per leg"
-          value={p2Rate} min={0} max={0.3} step={0.005}
-          onChange={setP2Rate}
-          display={v => v.toFixed(3)}
-        />
-        <SliderInput
-          label="Legs to win"
-          value={legsToWin} min={3} max={13} step={1}
-          onChange={setLegsToWin}
-          display={v => v.toString()}
-        />
-        <NumberInput
-          label="DraftKings total line"
-          value={totalLine} step={0.5}
-          onChange={setTotalLine}
-        />
-      </div>
-      
-      <div className="results">
-        <ResultRow label="Expected 180s (combined)" value={combinedExpected.toFixed(1)} />
-        <ResultRow label="Prob over" value={`${(probOver * 100).toFixed(1)}%`} />
-        <ResultRow label="Fair OVER odds" value={fairOverOdds > 0 ? `+${fairOverOdds}` : fairOverOdds} />
-        <ResultRow label="Fair UNDER odds" value={fairUnderOdds > 0 ? `+${fairUnderOdds}` : fairUnderOdds} />
-      </div>
-      
-      <p className="note">
-        Enter the DraftKings line for OVER and UNDER below to see your edge.
-      </p>
-      <EdgeComparisonInput probOver={probOver} probUnder={probUnder} />
-    </div>
-  )
-}
+tournaments = get_tournaments(dk_covered_only=True)
+selected    = st.selectbox("Select tournament", [t["name"] for t in tournaments])
+t           = next(x for x in tournaments if x["name"] == selected)
 
-// Poisson CDF — used client-side so no server needed
-function poissonCDF(k: number, lambda: number): number {
-  let sum = 0
-  let term = Math.exp(-lambda)
-  for (let i = 0; i <= k; i++) {
-    sum += term
-    term *= lambda / (i + 1)
-  }
-  return sum
-}
-```
+col1, col2 = st.columns([1, 3])
+with col1:
+    st.metric("Format",   t["format"])
+    st.metric("Legs/Sets to win", t.get("legs_to_win") or t.get("sets_to_win"))
+    st.metric("Category", t["category"])
 
----
-
-## Feature 6 — Tournament Hub
-
-```tsx
-// pages/tournaments/[slug].tsx
-
-export function TournamentHub({ tournament, currentYear, bracket, schedule }) {
-  return (
-    <div>
-      <TournamentHeader tournament={tournament} />
-      
-      {/* Format explainer — important for new bettors */}
-      <FormatCard
-        format={tournament.format}
-        legsToWin={tournament.legs_to_win}
-        setsToWin={tournament.sets_to_win}
-        description={tournament.format_description}
-      />
-      
-      {/* Live bracket / draw */}
-      {bracket && <BracketViewer bracket={bracket} />}
-      
-      {/* Schedule with model picks */}
-      <ScheduleTable
-        matches={schedule}
-        showPicks
-        showOdds
-      />
-      
-      {/* Historical results — who has won this before */}
-      <PastWinnersTable tournament={tournament} />
-      
-      {/* Player form guide — ranking players by current form */}
-      <FormGuide
-        players={tournament.entrants}
-        statKeys={["elo", "avg_3dart", "checkout_pct", "win_rate_last20"]}
-      />
-      
-      {/* DraftKings outright market odds */}
-      <OutrightOddsTable tournament={tournament} currentYear={currentYear} />
-    </div>
-  )
-}
+with col2:
+    schedule = get_tournament_schedule(t["id"])
+    if schedule:
+        df = pd.DataFrame(schedule)
+        st.dataframe(df[["match_date", "round", "player1", "player2", "score1", "score2"]],
+                     hide_index=True, use_container_width=True)
+    else:
+        st.info("No upcoming matches found for this tournament.")
 ```
 
 ---
@@ -425,19 +292,17 @@ export function TournamentHub({ tournament, currentYear, bracket, schedule }) {
 
 | Feature | MVP | V2 | V3 |
 |---------|-----|----|-----|
-| Player profiles with Elo | ✓ | | |
-| Match center (pre-match) | ✓ | | |
+| Player profiles with Elo chart | ✓ | | |
+| Match center (pre-match analysis) | ✓ | | |
 | Today's picks feed | ✓ | | |
 | 180s calculator tool | ✓ | | |
 | Tournament hub pages | ✓ | | |
 | Odds movement chart | ✓ | | |
 | H2H comparison tool | ✓ | | |
-| Live scores (during events) | | ✓ | |
-| Live model updates | | ✓ | |
-| Email/push alerts for picks | | ✓ | |
-| Custom model weighting | | ✓ | |
-| Free public API | | ✓ | |
+| Live scores polling (during events) | | ✓ | |
+| Email / push alerts for picks | | ✓ | |
 | Prop model (checkout %) | | ✓ | |
+| Steam move detection | | ✓ | |
 | User accounts + bet tracking | | | ✓ |
 | Fantasy darts integration | | | ✓ |
 | In-play betting signals | | | ✓ |

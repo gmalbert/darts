@@ -64,40 +64,19 @@ Revenue streams (priority order):
    - API access
 ```
 
-```tsx
-// Affiliate link management — centralized so you can A/B test
-// apps/web/src/lib/affiliates.ts
+```python
+# lib/affiliates.py — centralized affiliate link builder
+import os
 
-const AFFILIATES = {
-  draftkings: {
-    base: 'https://sportsbook.draftkings.com',
-    tag: process.env.NEXT_PUBLIC_DK_AFFILIATE_ID,
-    buildUrl: (path: string, tag: string) =>
-      `https://sportsbook.draftkings.com${path}?wpcid=${tag}`,
-  },
-  fanduel: {
-    base: 'https://sportsbook.fanduel.com',
-    tag: process.env.NEXT_PUBLIC_FD_AFFILIATE_ID,
-    buildUrl: (path: string, tag: string) =>
-      `https://sportsbook.fanduel.com${path}?pid=${tag}`,
-  },
-}
+DK_BASE  = "https://sportsbook.draftkings.com"
+DK_TAG   = os.getenv("DK_AFFILIATE_ID", "")
 
-export function buildAffiliateUrl(
-  book: 'draftkings' | 'fanduel',
-  path: string = '/sports/darts',
-): string {
-  const aff = AFFILIATES[book]
-  return aff.buildUrl(path, aff.tag ?? '')
-}
+def dk_url(path: str = "/sports/darts") -> str:
+    tag = f"?wpcid={DK_TAG}" if DK_TAG else ""
+    return f"{DK_BASE}{path}{tag}"
 
-// Track clicks to attribute conversions
-export async function trackAffiliateClick(book: string, page: string, matchId?: string) {
-  await fetch('/api/track', {
-    method: 'POST',
-    body: JSON.stringify({ event: 'affiliate_click', book, page, matchId }),
-  })
-}
+# Usage in Streamlit pages:
+# st.link_button("Bet at DraftKings", dk_url("/sports/darts"), type="primary")
 ```
 
 ---
@@ -262,37 +241,37 @@ def send_pick_alert(subscribers: list[str], pick: dict):
 
 ### Bet Tracker (User Accounts)
 
-```prisma
-// Add to schema.prisma
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
-  tier      String   @default("free")  // 'free' | 'pro'
-  bets      Bet[]
-  alerts    AlertSubscription[]
-}
+Add to `db/schema.py`:
 
-model Bet {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  matchId    Int
-  pickedSide String   // player name
-  odds       Int
-  stake      Decimal  @db.Decimal(10, 2)
-  result     String?  // 'win' | 'loss' | 'push' | null (pending)
-  profit     Decimal? @db.Decimal(10, 2)
-  createdAt  DateTime @default(now())
-}
+```python
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey
+from datetime import datetime
 
-model AlertSubscription {
-  id        String  @id @default(cuid())
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
-  minEdge   Decimal @default(0.05)  // only alert if edge > X
-  active    Boolean @default(true)
-}
+class User(Base):
+    __tablename__ = "users"
+    id         = Column(String, primary_key=True)  # UUID
+    email      = Column(String, unique=True, nullable=False)
+    tier       = Column(String, default="free")    # 'free' | 'pro'
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Bet(Base):
+    __tablename__ = "bets"
+    id          = Column(String, primary_key=True)  # UUID
+    user_id     = Column(String, ForeignKey("users.id"), nullable=False)
+    match_id    = Column(Integer, ForeignKey("matches.id"), nullable=False)
+    picked_side = Column(String)   # player name
+    odds        = Column(Integer)  # American odds
+    stake       = Column(Float)
+    result      = Column(String)   # 'win' | 'loss' | 'push' | None (pending)
+    profit      = Column(Float)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+
+class AlertSubscription(Base):
+    __tablename__ = "alert_subscriptions"
+    id        = Column(String, primary_key=True)
+    user_id   = Column(String, ForeignKey("users.id"), nullable=False)
+    min_edge  = Column(Float, default=0.05)
+    active    = Column(Boolean, default=True)
 ```
 
 ---
@@ -301,45 +280,49 @@ model AlertSubscription {
 
 ### Public API (rate-limited, free tier)
 
-Expose a limited API so other developers can build on your data. This drives backlinks, press, and community.
+Expose a limited API so other developers can build on your data. Add a lightweight FastAPI service alongside the Streamlit app, or use a simple Flask endpoint. Deploy as a separate Railway service.
 
 ```python
-# apps/api/routers/public_api.py
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi_limiter.depends import RateLimiter
+# api/main.py (separate service, optional)
+from flask import Flask, jsonify, request, abort
+from functools import wraps
+from db.queries import get_player, get_upcoming_matches
+import time, collections
 
-router = APIRouter(prefix="/public/v1", tags=["Public API"])
+app = Flask(__name__)
 
-# Free tier: 100 requests/hour
-@router.get("/players/{slug}", dependencies=[Depends(RateLimiter(times=100, hours=1))])
-async def get_player(slug: str):
-    player = await fetch_player(slug)
+# Simple in-memory rate limiter (replace with Redis in production)
+_rate_cache: dict = collections.defaultdict(list)
+
+def rate_limit(max_calls: int, window_seconds: int = 3600):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            ip = request.remote_addr
+            now = time.time()
+            calls = [t for t in _rate_cache[ip] if now - t < window_seconds]
+            if len(calls) >= max_calls:
+                abort(429, description="Rate limit exceeded")
+            _rate_cache[ip] = calls + [now]
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+@app.get("/public/v1/players/<slug>")
+@rate_limit(100)
+def api_get_player(slug):
+    player = get_player(slug)
     if not player:
-        raise HTTPException(404, "Player not found")
-    return {
-        "name": player.name,
-        "nationality": player.nationality,
-        "elo": player.current_elo,
-        "avg_3dart_career": player.career_avg,
-        "avg_3dart_last20": player.avg_last20,
-        "checkout_pct": player.checkout_pct,
-        "_source": "yourdomain.com",
-    }
+        abort(404)
+    return jsonify({"name": player["name"], "elo": player["elo"],
+                    "nationality": player["nationality"], "_source": "yourdomain.com"})
 
-@router.get("/matches/upcoming", dependencies=[Depends(RateLimiter(times=60, hours=1))])
-async def upcoming_matches(tournament: str | None = None):
-    matches = await fetch_upcoming(tournament_filter=tournament)
-    return [
-        {
-            "id": m.id,
-            "tournament": m.tournament.name,
-            "round": m.round,
-            "player1": m.player1.name,
-            "player2": m.player2.name,
-            "match_date": m.match_date.isoformat() if m.match_date else None,
-        }
-        for m in matches[:50]
-    ]
+@app.get("/public/v1/matches/upcoming")
+@rate_limit(60)
+def api_upcoming_matches():
+    tournament = request.args.get("tournament")
+    matches = get_upcoming_matches(tournament_filter=tournament)[:50]
+    return jsonify(matches)
 ```
 
 ---

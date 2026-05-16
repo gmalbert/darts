@@ -3,462 +3,324 @@
 ## Stack Overview
 
 ```
-Frontend:   Next.js 14 (App Router) + TypeScript + Tailwind CSS
-Backend:    FastAPI (Python) — data pipelines, model serving
-Database:   PostgreSQL (Supabase free tier to start)
-Cache:      Redis (Upstash free tier) — odds snapshots, live scores
-Queue:      BullMQ (Redis-backed) — scraper jobs
-ORM:        Prisma (frontend queries) + SQLAlchemy (Python scrapers)
-Auth:       NextAuth.js (GitHub/Google — for future user accounts)
-Deploy:     Vercel (frontend) + Railway (FastAPI) + Supabase (DB)
-Analytics:  Plausible (privacy-first, cheap)
-Monitoring: Sentry (errors) + Uptime Robot (free tier)
+App:        Streamlit (Python) — UI, data display, interactive tools
+Database:   SQLite (local dev) → PostgreSQL via SQLAlchemy (production)
+ORM:        SQLAlchemy (Core + ORM)
+Data:       pandas, numpy
+Charts:     Plotly (st.plotly_chart) — interactive, supports zoom/hover
+ML:         scikit-learn, scipy — Elo model, match predictor, props model
+Scrapers:   requests + BeautifulSoup (existing Python scrapers unchanged)
+Scheduler:  APScheduler — odds polling, stats refresh, steam detection
+Deploy:     Streamlit Community Cloud (free tier) — connects directly to GitHub
+Secrets:    Streamlit secrets.toml / environment variables
 ```
 
-**Why split frontend/backend?** Python owns the data science ecosystem (pandas, sklearn, scipy). Next.js owns the DX and deployment story. Keep them separate and communicate via a clean REST API.
+**Why Streamlit?** The entire data stack is already Python. Streamlit eliminates the frontend/backend split — write one Python file and get an interactive dashboard. No TypeScript, no API layer, no Node. Perfect for analytics-first tools where content is data, not marketing pages.
 
 ---
 
 ## Repository Structure
 
 ```
-darts-site/
-├── apps/
-│   ├── web/                    # Next.js frontend
-│   │   ├── src/
-│   │   │   ├── app/            # App Router pages
-│   │   │   │   ├── page.tsx            # Home
-│   │   │   │   ├── tournaments/
-│   │   │   │   │   ├── page.tsx
-│   │   │   │   │   └── [slug]/page.tsx
-│   │   │   │   ├── players/
-│   │   │   │   │   ├── page.tsx
-│   │   │   │   │   └── [slug]/page.tsx
-│   │   │   │   ├── matches/[id]/page.tsx
-│   │   │   │   ├── picks/page.tsx
-│   │   │   │   ├── odds/page.tsx
-│   │   │   │   └── tools/
-│   │   │   │       ├── edge-calculator/page.tsx
-│   │   │   │       ├── h2h/page.tsx
-│   │   │   │       └── 180s-calculator/page.tsx
-│   │   │   ├── components/
-│   │   │   ├── lib/
-│   │   │   └── types/
-│   │   ├── prisma/schema.prisma
-│   │   └── package.json
-│   │
-│   └── api/                    # FastAPI backend
-│       ├── main.py
-│       ├── routers/
-│       │   ├── matches.py
-│       │   ├── players.py
-│       │   ├── odds.py
-│       │   └── picks.py
-│       ├── models/
-│       │   ├── elo.py
-│       │   ├── match_predictor.py
-│       │   └── props_model.py
-│       ├── scrapers/
-│       │   ├── dartsdatabase.py
-│       │   ├── dartsdata_api.py
-│       │   └── odds_api.py
-│       ├── jobs/
-│       │   └── scheduler.py
-│       └── requirements.txt
-│
-├── packages/
-│   └── shared-types/           # TypeScript types shared across apps
-│
-└── docker-compose.yml          # Local dev: postgres + redis
+darts-app/
+├── app.py                      # Streamlit entry point (Home page)
+├── pages/
+│   ├── 1_Tournaments.py        # All DK-covered tournaments
+│   ├── 2_Players.py            # Player index + profile browser
+│   ├── 3_Matches.py            # Match center
+│   ├── 4_Picks.py              # Today's model picks
+│   ├── 5_Odds.py               # Live odds tracker + line movement
+│   └── 6_Tools.py              # Edge calc, H2H tool, 180s calc
+├── components/
+│   ├── match_center.py         # Match center layout
+│   ├── player_profile.py       # Player stats display
+│   ├── picks_feed.py           # Picks feed with edge filter
+│   └── odds_chart.py           # Odds movement chart (Plotly)
+├── models/
+│   ├── elo.py                  # Elo rating system
+│   ├── match_predictor.py      # Gradient boosting match predictor
+│   └── props_model.py          # 180s / checkout props model
+├── scrapers/
+│   ├── dartsdatabase.py        # Historical data (dartsdatabase.co.uk)
+│   ├── dartsdata_api.py        # Live scores (dartsdata.com)
+│   └── odds_api.py             # Odds (the-odds-api.com)
+├── db/
+│   ├── schema.py               # SQLAlchemy models
+│   └── queries.py              # Reusable query helpers
+├── jobs/
+│   ├── scheduler.py            # APScheduler — odds + stats refresh
+│   └── steam_detector.py       # Line movement detection
+├── data_files/                 # Seed CSVs, cached data
+├── .streamlit/
+│   └── config.toml             # Theme, server settings
+├── requirements.txt
+├── .env.example
+└── README.md
 ```
 
 ---
 
-## Database (Prisma Schema)
-
-```prisma
-// apps/web/prisma/schema.prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-model Player {
-  id          Int       @id @default(autoincrement())
-  name        String    @unique
-  slug        String    @unique
-  nickname    String?
-  nationality String?
-  dob         DateTime?
-  pdcId       String?
-  dartdbId    String?
-  createdAt   DateTime  @default(now())
-
-  matchesAsP1   Match[]  @relation("Player1")
-  matchesAsP2   Match[]  @relation("Player2")
-  winsAsWinner  Match[]  @relation("Winner")
-  statsCache    PlayerStatsCache[]
-  eloHistory    EloHistory[]
-}
-
-model Tournament {
-  id          Int      @id @default(autoincrement())
-  name        String
-  slug        String   @unique
-  shortName   String?
-  category    String   // 'major' | 'series' | 'premier_league' | 'european_tour'
-  dkCovered   Boolean  @default(false)
-  format      String   // 'sets' | 'legs'
-  legsToWin   Int?
-  setsToWin   Int?
-  startMonth  Int?
-  endMonth    Int?
-
-  matches     Match[]
-}
-
-model Match {
-  id            Int        @id @default(autoincrement())
-  tournamentId  Int
-  tournament    Tournament @relation(fields: [tournamentId], references: [id])
-  year          Int
-  round         String
-  player1Id     Int
-  player1       Player     @relation("Player1", fields: [player1Id], references: [id])
-  player2Id     Int
-  player2       Player     @relation("Player2", fields: [player2Id], references: [id])
-  score1        Int?
-  score2        Int?
-  winnerId      Int?
-  winner        Player?    @relation("Winner", fields: [winnerId], references: [id])
-  matchDate     DateTime?
-  venue         String?
-  avg1          Decimal?   @db.Decimal(5, 2)
-  avg2          Decimal?   @db.Decimal(5, 2)
-  checkoutPct1  Decimal?   @db.Decimal(5, 2)
-  checkoutPct2  Decimal?   @db.Decimal(5, 2)
-  oneEighties1  Int?
-  oneEighties2  Int?
-  highCheckout1 Int?
-  highCheckout2 Int?
-  createdAt     DateTime   @default(now())
-
-  oddsSnapshots OddsSnapshot[]
-
-  @@index([player1Id])
-  @@index([player2Id])
-  @@index([tournamentId, year])
-}
-
-model OddsSnapshot {
-  id           Int      @id @default(autoincrement())
-  matchId      Int
-  match        Match    @relation(fields: [matchId], references: [id])
-  bookmaker    String
-  market       String
-  outcome      String
-  price        Int      // American odds
-  impliedProb  Decimal  @db.Decimal(5, 4)
-  snapshotTime DateTime @default(now())
-
-  @@index([matchId, snapshotTime])
-}
-
-model PlayerStatsCache {
-  id             Int      @id @default(autoincrement())
-  playerId       Int
-  player         Player   @relation(fields: [playerId], references: [id])
-  tournamentSlug String?  // null = all tournaments
-  yearFrom       Int
-  yearTo         Int
-  matchesPlayed  Int
-  matchesWon     Int
-  winRate        Decimal  @db.Decimal(5, 4)
-  avg3dart       Decimal? @db.Decimal(5, 2)
-  avgCheckout    Decimal? @db.Decimal(5, 2)
-  avg180sPerLeg  Decimal? @db.Decimal(5, 3)
-  updatedAt      DateTime @updatedAt
-
-  @@unique([playerId, tournamentSlug, yearFrom, yearTo])
-}
-
-model EloHistory {
-  id        Int      @id @default(autoincrement())
-  playerId  Int
-  player    Player   @relation(fields: [playerId], references: [id])
-  rating    Decimal  @db.Decimal(7, 2)
-  matchId   Int?
-  recordedAt DateTime @default(now())
-
-  @@index([playerId, recordedAt])
-}
-```
-
----
-
-## FastAPI Backend
+## Database (SQLAlchemy Schema)
 
 ```python
-# apps/api/main.py
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from routers import matches, players, odds, picks
-from jobs.scheduler import start_scheduler
-from contextlib import asynccontextmanager
+# db/schema.py
+from datetime import datetime
+from sqlalchemy import (
+    Column, Integer, String, Float, Boolean, DateTime, ForeignKey, UniqueConstraint, Index
+)
+from sqlalchemy.orm import DeclarativeBase, relationship
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    start_scheduler()
-    yield
+class Base(DeclarativeBase):
+    pass
 
-app = FastAPI(title="Darts Analytics API", version="1.0.0", lifespan=lifespan)
+class Player(Base):
+    __tablename__ = "players"
+    id          = Column(Integer, primary_key=True)
+    name        = Column(String, unique=True, nullable=False)
+    slug        = Column(String, unique=True, nullable=False)
+    nickname    = Column(String)
+    nationality = Column(String)
+    dob         = Column(DateTime)
+    pdc_id      = Column(String)
+    dartdb_id   = Column(String)
+    created_at  = Column(DateTime, default=datetime.utcnow)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://yourdomain.com", "http://localhost:3000"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    matches_as_p1 = relationship("Match", foreign_keys="Match.player1_id", back_populates="player1")
+    matches_as_p2 = relationship("Match", foreign_keys="Match.player2_id", back_populates="player2")
+    elo_history   = relationship("EloHistory", back_populates="player")
+    stats_cache   = relationship("PlayerStatsCache", back_populates="player")
+
+class Tournament(Base):
+    __tablename__ = "tournaments"
+    id          = Column(Integer, primary_key=True)
+    name        = Column(String, nullable=False)
+    slug        = Column(String, unique=True, nullable=False)
+    short_name  = Column(String)
+    category    = Column(String)   # 'major' | 'series' | 'premier_league' | 'european_tour'
+    dk_covered  = Column(Boolean, default=False)
+    format      = Column(String)   # 'sets' | 'legs'
+    legs_to_win = Column(Integer)
+    sets_to_win = Column(Integer)
+    start_month = Column(Integer)
+    end_month   = Column(Integer)
+
+class Match(Base):
+    __tablename__ = "matches"
+    id              = Column(Integer, primary_key=True)
+    tournament_id   = Column(Integer, ForeignKey("tournaments.id"), nullable=False)
+    year            = Column(Integer, nullable=False)
+    round           = Column(String)
+    player1_id      = Column(Integer, ForeignKey("players.id"), nullable=False)
+    player2_id      = Column(Integer, ForeignKey("players.id"), nullable=False)
+    score1          = Column(Integer)
+    score2          = Column(Integer)
+    winner_id       = Column(Integer, ForeignKey("players.id"))
+    match_date      = Column(DateTime)
+    avg1            = Column(Float)
+    avg2            = Column(Float)
+    checkout_pct1   = Column(Float)
+    checkout_pct2   = Column(Float)
+    one_eighties1   = Column(Integer)
+    one_eighties2   = Column(Integer)
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+    odds_snapshots = relationship("OddsSnapshot", back_populates="match")
+    __table_args__ = (
+        Index("ix_match_players", "player1_id", "player2_id"),
+        Index("ix_match_tournament_year", "tournament_id", "year"),
+    )
+
+class OddsSnapshot(Base):
+    __tablename__ = "odds_snapshots"
+    id            = Column(Integer, primary_key=True)
+    match_id      = Column(Integer, ForeignKey("matches.id"), nullable=False)
+    bookmaker     = Column(String)
+    market        = Column(String)   # 'h2h' | '180s_over' | '180s_under'
+    outcome       = Column(String)
+    price         = Column(Integer)  # American odds
+    implied_prob  = Column(Float)
+    snapshot_time = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("ix_odds_match_time", "match_id", "snapshot_time"),)
+
+class PlayerStatsCache(Base):
+    __tablename__ = "player_stats_cache"
+    id               = Column(Integer, primary_key=True)
+    player_id        = Column(Integer, ForeignKey("players.id"), nullable=False)
+    tournament_slug  = Column(String)  # NULL = all tournaments
+    year_from        = Column(Integer)
+    year_to          = Column(Integer)
+    matches_played   = Column(Integer)
+    matches_won      = Column(Integer)
+    win_rate         = Column(Float)
+    avg_3dart        = Column(Float)
+    avg_checkout     = Column(Float)
+    avg_180s_per_leg = Column(Float)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("player_id", "tournament_slug", "year_from", "year_to"),)
+
+class EloHistory(Base):
+    __tablename__ = "elo_history"
+    id          = Column(Integer, primary_key=True)
+    player_id   = Column(Integer, ForeignKey("players.id"), nullable=False)
+    rating      = Column(Float, nullable=False)
+    match_id    = Column(Integer, ForeignKey("matches.id"))
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (Index("ix_elo_player_time", "player_id", "recorded_at"),)
+```
+
+---
+
+## Streamlit App Entry Point
+
+```python
+# app.py
+import streamlit as st
+from db.queries import get_todays_schedule, get_todays_picks
+
+st.set_page_config(
+    page_title="Darts Analytics",
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-app.include_router(matches.router, prefix="/v1/matches")
-app.include_router(players.router, prefix="/v1/players")
-app.include_router(odds.router, prefix="/v1/odds")
-app.include_router(picks.router, prefix="/v1/picks")
+st.title("🎯 Darts Analytics")
+st.caption("Model-driven picks and stats for DraftKings-covered PDC tournaments.")
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("Today's Schedule")
+    schedule = get_todays_schedule()
+    if schedule:
+        for match in schedule:
+            with st.container(border=True):
+                c1, c2, c3 = st.columns([3, 1, 3])
+                c1.write(f"**{match['player1']}**")
+                c2.write("vs")
+                c3.write(f"**{match['player2']}**")
+                st.caption(f"{match['tournament']} · {match['round']} · {match['match_time']}")
+    else:
+        st.info("No matches scheduled today.")
+
+with col2:
+    st.subheader("Top Picks Today")
+    picks = get_todays_picks(min_edge=0.02)
+    for pick in picks[:5]:
+        edge_color = "green" if pick["edge_pct"] >= 5 else "orange"
+        st.write(f":{edge_color}[**{pick['pick']}**] — {pick['edge_pct']:.1f}% edge")
+        st.caption(f"{pick['dk_odds']:+d} · Our prob: {pick['our_prob']*100:.1f}%")
 ```
+
+---
+
+## Streamlit Theme (`.streamlit/config.toml`)
+
+```toml
+[theme]
+base                     = "dark"
+primaryColor             = "#f0a500"    # amber — darts bullseye gold
+backgroundColor          = "#0d1117"   # near-black
+secondaryBackgroundColor = "#161b22"   # card/panel surface
+textColor                = "#e6edf3"
+
+[server]
+headless = true
+port = 8501
+
+[browser]
+gatherUsageStats = false
+```
+
+---
+
+## Database Connection & Caching
 
 ```python
-# apps/api/routers/picks.py
-from fastapi import APIRouter, Query
-from models.elo import DartsElo
-from models.match_predictor import DartsMatchPredictor
-from models.props_model import PropsModels, calculate_edge
-from db import get_upcoming_matches, get_latest_odds, get_player_stats
-import joblib
+# db/queries.py
+import os
+import streamlit as st
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
-router = APIRouter()
-elo = DartsElo()
-predictor = DartsMatchPredictor.load("models/match_predictor.pkl")
+@st.cache_resource
+def get_engine():
+    db_url = os.getenv("DATABASE_URL", "sqlite:///data_files/darts.db")
+    return create_engine(db_url, pool_pre_ping=True)
 
-@router.get("/today")
-async def get_todays_picks(min_edge: float = Query(0.02, ge=0, le=0.2)):
-    upcoming = await get_upcoming_matches(days_ahead=1)
-    picks = []
+@st.cache_data(ttl=300)   # cache 5 minutes
+def get_todays_picks(min_edge: float = 0.02) -> list[dict]:
+    with sessionmaker(get_engine())() as session:
+        rows = session.execute(text("""
+            SELECT m.id, p1.name AS player1, p2.name AS player2,
+                   t.name AS tournament, m.round, os.price AS dk_odds
+            FROM matches m
+            JOIN players p1 ON p1.id = m.player1_id
+            JOIN players p2 ON p2.id = m.player2_id
+            JOIN tournaments t ON t.id = m.tournament_id
+            LEFT JOIN odds_snapshots os ON os.match_id = m.id
+            WHERE m.match_date::date = CURRENT_DATE
+            ORDER BY m.match_date
+        """)).fetchall()
+        return [dict(r._mapping) for r in rows]
 
-    for match in upcoming:
-        stats = await get_player_stats([match["player1_id"], match["player2_id"]])
-        odds = await get_latest_odds(match["id"])
-        if not odds:
-            continue
-
-        prob = predictor.predict_proba(match, stats)
-        edge = calculate_edge(prob, odds["p1_odds"])
-
-        if edge["edge"] >= min_edge:
-            picks.append({
-                "match_id": match["id"],
-                "tournament": match["tournament_name"],
-                "player1": match["player1"],
-                "player2": match["player2"],
-                "pick": match["player1"] if edge["edge"] > 0 else match["player2"],
-                "our_prob": edge["our_prob"],
-                "dk_odds": edge["dk_odds"],
-                "edge_pct": edge["edge_pct"],
-                "kelly_quarter": edge["kelly_quarter"],
-                "reasoning": build_reasoning(match, stats, edge),
-            })
-
-    return sorted(picks, key=lambda p: p["edge_pct"], reverse=True)
-
-
-def build_reasoning(match, stats, edge) -> list[str]:
-    reasons = []
-    s1, s2 = stats[match["player1_id"]], stats[match["player2_id"]]
-
-    avg_diff = s1.get("avg_3dart", 0) - s2.get("avg_3dart", 0)
-    if abs(avg_diff) > 2:
-        better = match["player1"] if avg_diff > 0 else match["player2"]
-        reasons.append(f"{better} has a {abs(avg_diff):.1f} point 3-dart average advantage (last 20 matches)")
-
-    if s1.get("elo", 1500) - s2.get("elo", 1500) > 50:
-        reasons.append(f"{match['player1']} rated {s1['elo']:.0f} Elo vs {s2['elo']:.0f} — significant rating gap")
-
-    return reasons[:3]  # max 3 bullets
+@st.cache_data(ttl=3600)  # cache 1 hour
+def get_player(slug: str) -> dict | None:
+    with sessionmaker(get_engine())() as session:
+        row = session.execute(
+            text("SELECT * FROM players WHERE slug = :slug"), {"slug": slug}
+        ).fetchone()
+        return dict(row._mapping) if row else None
 ```
 
 ---
 
-## Next.js Data Fetching
+## Scheduler (Background Jobs)
 
-```ts
-// apps/web/src/lib/api.ts
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-
-export async function getTodaysPicks(minEdge = 0.02) {
-  const res = await fetch(`${API_BASE}/v1/picks/today?min_edge=${minEdge}`, {
-    next: { revalidate: 300 },  // cache 5 min
-  })
-  if (!res.ok) throw new Error('Failed to fetch picks')
-  return res.json()
-}
-
-export async function getPlayer(slug: string) {
-  const res = await fetch(`${API_BASE}/v1/players/${slug}`, {
-    next: { revalidate: 3600 },  // cache 1 hr
-  })
-  if (!res.ok) throw new Error(`Player not found: ${slug}`)
-  return res.json()
-}
-
-export async function getMatch(id: string) {
-  const res = await fetch(`${API_BASE}/v1/matches/${id}`, {
-    next: { revalidate: 60 },  // 1 min — faster during live events
-  })
-  return res.json()
-}
-
-export async function getOddsHistory(matchId: string) {
-  const res = await fetch(`${API_BASE}/v1/odds/${matchId}/history`, {
-    next: { revalidate: 120 },
-  })
-  return res.json()
-}
-```
-
----
-
-## WebSocket (Live Scores)
+Run as a separate process (Railway worker service or a cron job):
 
 ```python
-# apps/api/routers/ws.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from scrapers.dartsdata_api import get_live_matches
-import asyncio, json
+# jobs/scheduler.py
+from apscheduler.schedulers.blocking import BlockingScheduler
+from scrapers.odds_api import refresh_odds_snapshots
+from scrapers.dartsdata_api import refresh_live_scores
+from db.queries import rebuild_stats_cache
 
-router = APIRouter()
+scheduler = BlockingScheduler()
 
-class LiveManager:
-    def __init__(self):
-        self.connections: list[WebSocket] = []
+# Odds refresh every 10 minutes
+scheduler.add_job(refresh_odds_snapshots, "interval", minutes=10, id="odds")
 
-    async def connect(self, ws: WebSocket):
-        await ws.accept()
-        self.connections.append(ws)
+# Live scores every 30 seconds (gate behind is_live_event check)
+scheduler.add_job(refresh_live_scores, "interval", seconds=30, id="live")
 
-    def disconnect(self, ws: WebSocket):
-        self.connections.remove(ws)
+# Nightly stats rebuild at 3 AM UTC
+scheduler.add_job(rebuild_stats_cache, "cron", hour=3, id="stats")
 
-    async def broadcast(self, data: dict):
-        msg = json.dumps(data)
-        for ws in self.connections:
-            try:
-                await ws.send_text(msg)
-            except Exception:
-                pass
-
-manager = LiveManager()
-
-@router.websocket("/ws/live")
-async def live_scores(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            matches = get_live_matches()
-            if matches:
-                await manager.broadcast({"type": "live_update", "matches": matches})
-            await asyncio.sleep(30)
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-```
-
-```tsx
-// apps/web/src/hooks/useLiveScores.ts
-import { useEffect, useState } from 'react'
-
-export function useLiveScores() {
-  const [scores, setScores] = useState<LiveMatch[]>([])
-
-  useEffect(() => {
-    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_WS_URL}/ws/live`)
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'live_update') {
-        setScores(data.matches)
-      }
-    }
-
-    ws.onerror = () => console.warn('Live scores WS error — falling back to polling')
-
-    return () => ws.close()
-  }, [])
-
-  return scores
-}
+if __name__ == "__main__":
+    scheduler.start()
 ```
 
 ---
 
-## Docker Compose (Local Dev)
+## Deployment
 
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: darts
-      POSTGRES_USER: darts
-      POSTGRES_PASSWORD: darts
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  api:
-    build: ./apps/api
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql://darts:darts@postgres:5432/darts
-      REDIS_URL: redis://redis:6379
-      ODDS_API_KEY: ${ODDS_API_KEY}
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./apps/api:/app
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-volumes:
-  pgdata:
 ```
+Streamlit Community Cloud (free — start here):
+  - Connect GitHub repo at share.streamlit.io
+  - Set secrets via dashboard (DATABASE_URL, ODDS_API_KEY, etc.)
+  - Auto-deploys on push to main
+  - URL: https://your-app.streamlit.app
+  - Limit: 1 GB RAM, sleeps after inactivity
 
----
-
-## Environment Variables
-
-```bash
-# apps/web/.env.local
-DATABASE_URL=postgresql://darts:darts@localhost:5432/darts
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_WS_URL=ws://localhost:8000
-NEXTAUTH_SECRET=generate-with-openssl-rand-hex-32
-NEXTAUTH_URL=http://localhost:3000
-
-# apps/api/.env
-DATABASE_URL=postgresql://darts:darts@localhost:5432/darts
-REDIS_URL=redis://localhost:6379
-ODDS_API_KEY=your_key_here
-DARTSDATA_REFERER=https://www.dartsdata.com/
+Railway (paid ~$5/mo — use when you have real traffic):
+  - Two services: Streamlit app + scheduler worker
+  - Procfile:
+      web: streamlit run app.py --server.port=$PORT --server.headless=true
+      worker: python -m jobs.scheduler
+  - Add Railway PostgreSQL plugin for persistent DB
+  - Always-on, no sleep
 ```
