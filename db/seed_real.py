@@ -89,8 +89,9 @@ def _parse_date(raw: str | None, fallback_year: int) -> datetime:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-def run(start_year: int = 2015, refresh_only: bool = False) -> None:
-    print(f"\n=== BullzIQ Real Data Seeder  (start_year={start_year}, refresh_only={refresh_only}) ===\n")
+def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool = False) -> None:
+    year_range = f"{start_year}–{end_year}" if end_year else f"{start_year}+"
+    print(f"\n=== BullzIQ Real Data Seeder  (years={year_range}, refresh_only={refresh_only}) ===\n")
 
     # ── 1. Clean existing tables ───────────────────────────────────────────────
     if not refresh_only:
@@ -107,8 +108,9 @@ def run(start_year: int = 2015, refresh_only: bool = False) -> None:
 
     # ── 2. Scrape dartsdatabase.co.uk ─────────────────────────────────────────
     scrape_from = datetime.now().year if refresh_only else start_year
+    scrape_to = datetime.now().year if refresh_only else end_year
     print(f"Scraping dartsdatabase.co.uk from {scrape_from}...")
-    _scrape_raw(db_path=str(DB_PATH), start_year=scrape_from)
+    _scrape_raw(db_path=str(DB_PATH), start_year=scrape_from, end_year=scrape_to)
 
     # ── 3. Load raw matches ───────────────────────────────────────────────────
     conn = sqlite3.connect(str(DB_PATH))
@@ -382,8 +384,12 @@ if __name__ == "__main__":
         help="Earliest year to scrape (default: 2015)",
     )
     parser.add_argument(
+        "--end-year", type=int, default=None,
+        help="Latest year to scrape, inclusive (default: no limit).",
+    )
+    parser.add_argument(
         "--refresh-only", action="store_true",
         help="Only scrape the current year and refresh odds (fast daily refresh).",
     )
     args = parser.parse_args()
-    run(start_year=args.start_year, refresh_only=args.refresh_only)
+    run(start_year=args.start_year, end_year=args.end_year, refresh_only=args.refresh_only)

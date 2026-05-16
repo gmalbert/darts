@@ -227,9 +227,9 @@ def _fetch_event(eid: int, delay: float = 1.0) -> dict | None:
     return _parse_event_page(resp.text, eid)
 
 
-def _discover_events(start_year: int = 2015) -> Generator[dict, None, None]:
+def _discover_events(start_year: int = 2015, end_year: int | None = None) -> Generator[dict, None, None]:
     """
-    Scan ID ranges to discover PDC major events from start_year onward.
+    Scan ID ranges to discover PDC major events between start_year and end_year (inclusive).
     Yields parsed event dicts.
     """
     seen_eids: set[int] = set()
@@ -244,7 +244,10 @@ def _discover_events(start_year: int = 2015) -> Generator[dict, None, None]:
             if event is None:
                 continue
 
-            if event["date"].year < start_year:
+            event_year = event["date"].year
+            if event_year < start_year:
+                continue
+            if end_year is not None and event_year > end_year:
                 continue
 
             print(f"  Found: [{eid}] {event['name']}  ({event['date'].date()})")
@@ -275,13 +278,14 @@ TOURNAMENT_IDS: dict[str, str] = {
 }
 
 
-def seed_database(db_path: str = "data_files/bullziq.db", start_year: int = 2015) -> None:
+def seed_database(db_path: str = "data_files/bullziq.db", start_year: int = 2015, end_year: int | None = None) -> None:
     """
     Discover PDC major events from dartsdatabase.co.uk and write raw match
     rows to the ``raw_matches`` SQLite table.
 
     Designed for scheduled/manual use.  Polite delays between requests.
-    Scans ~1 500 event IDs using adaptive step sizes (see DISCOVERY_RANGES).
+    Scans ~2 500 event IDs using adaptive step sizes (see DISCOVERY_RANGES).
+    Pass end_year to limit the scrape to a specific year range.
     """
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -309,9 +313,10 @@ def seed_database(db_path: str = "data_files/bullziq.db", start_year: int = 2015
     conn.commit()
 
     total = 0
-    print(f"Scanning dartsdatabase.co.uk for PDC major events from {start_year}...")
+    year_range = f"{start_year}–{end_year}" if end_year else f"{start_year}+"
+    print(f"Scanning dartsdatabase.co.uk for PDC major events ({year_range})...")
 
-    for event in _discover_events(start_year=start_year):
+    for event in _discover_events(start_year=start_year, end_year=end_year):
         for m in event["matches"]:
             cur.execute(
                 """
