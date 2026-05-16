@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -85,6 +85,15 @@ def _parse_date(raw: str | None, fallback_year: int) -> datetime:
         if len(part) == 4 and part.isdigit():
             return datetime(int(part), 7, 1)
     return datetime(fallback_year, 7, 1)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _utc_now_naive() -> datetime:
+    # ORM DateTime columns here are stored as naive UTC datetimes.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
@@ -293,7 +302,7 @@ def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool 
 
     # ── 6. Write real-data flag ───────────────────────────────────────────────
     FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    FLAG_PATH.write_text(f"seeded={datetime.utcnow().isoformat()}\nrows={match_count}\n")
+    FLAG_PATH.write_text(f"seeded={_utc_now_iso()}\nrows={match_count}\n")
     print(f"Flag written: {FLAG_PATH}")
     print("\n=== Seed complete ===")
 
@@ -325,14 +334,14 @@ def _refresh_odds() -> None:
             commence_dt = (
                 datetime.fromisoformat(ev["commence_time"].rstrip("Z"))
                 if ev.get("commence_time")
-                else datetime.utcnow()
+                else _utc_now_naive()
             )
 
             # Find or create upcoming match
             m = (
                 s.query(Match)
                 .filter_by(player1_id=p1.id, player2_id=p2.id, is_upcoming=True)
-                .filter(Match.match_date >= datetime.utcnow())
+                .filter(Match.match_date >= _utc_now_naive())
                 .first()
             )
             if not m:
@@ -353,7 +362,7 @@ def _refresh_odds() -> None:
                 p1_implied=ev["p1_implied"],
                 p2_implied=ev["p2_implied"],
                 book="DraftKings",
-                snapshot_time=datetime.utcnow(),
+                snapshot_time=_utc_now_naive(),
             )
             s.add(snap)
             written += 1

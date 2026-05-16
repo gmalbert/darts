@@ -13,7 +13,7 @@ Set ODDS_API_KEY in your .env file.
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 from dotenv import load_dotenv
@@ -29,6 +29,35 @@ ODDS_FORMAT = "american"
 BOOK_WHITELIST = {"draftkings"}
 
 
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _utc_now_naive() -> datetime:
+    # DB columns are stored as naive UTC datetimes.
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _discover_darts_sport_keys() -> list[str]:
+    """Return likely darts sport keys from The Odds API /sports endpoint."""
+    url = f"{BASE_URL}/sports"
+    try:
+        resp = requests.get(url, params={"apiKey": ODDS_API_KEY}, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return []
+
+    keys: list[str] = []
+    for sport in resp.json():
+        key = str(sport.get("key", ""))
+        if "darts" in key.lower() and key not in keys:
+            keys.append(key)
+
+    # Prioritize obvious PDC-style keys first.
+    keys.sort(key=lambda k: ("pdc" not in k.lower(), k))
+    return keys
+
+
 def fetch_darts_odds() -> list[dict]:
     """
     Fetch current PDC darts odds from The Odds API.
@@ -38,7 +67,6 @@ def fetch_darts_odds() -> list[dict]:
         print("ODDS_API_KEY not set. Skipping odds fetch.")
         return []
 
-    url = f"{BASE_URL}/sports/{SPORT}/odds"
     params = {
         "apiKey": ODDS_API_KEY,
         "regions": REGIONS,
@@ -47,17 +75,50 @@ def fetch_darts_odds() -> list[dict]:
         "bookmakers": ",".join(BOOK_WHITELIST),
     }
 
-    try:
-        resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        print(f"Odds API fetch failed: {exc}")
+    discovered = _discover_darts_sport_keys()
+    if not discovered:
+        print("Odds API: no darts sport keys available for this account right now.")
+        return []
+
+    candidate_keys: list[str] = []
+    if SPORT in discovered:
+        candidate_keys.append(SPORT)
+    candidate_keys.extend([k for k in discovered if k not in candidate_keys])
+
+    resp = None
+    used_sport = SPORT
+
+    while candidate_keys:
+        sport_key = candidate_keys.pop(0)
+        url = f"{BASE_URL}/sports/{sport_key}/odds"
+        try:
+            current = requests.get(url, params=params, timeout=15)
+        except requests.RequestException as exc:
+            print(f"Odds API fetch failed for sport '{sport_key}': {exc}")
+            return []
+
+        if current.status_code == 404:
+            print(f"Odds API sport key '{sport_key}' not found (404).")
+            continue
+
+        try:
+            current.raise_for_status()
+        except requests.RequestException as exc:
+            print(f"Odds API fetch failed for sport '{sport_key}': {exc}")
+            return []
+
+        resp = current
+        used_sport = sport_key
+        break
+
+    if resp is None:
+        print("Odds API fetch failed: no valid darts sport key returned odds.")
         return []
 
     # Log remaining quota
     remaining = resp.headers.get("x-requests-remaining", "?")
     used = resp.headers.get("x-requests-used", "?")
-    print(f"Odds API: {used} used / {remaining} remaining this month")
+    print(f"Odds API ({used_sport}): {used} used / {remaining} remaining this month")
 
     data = resp.json()
     results = []
@@ -103,7 +164,7 @@ def fetch_darts_odds() -> list[dict]:
             "p1_implied": round(_implied(p1_odds), 4),
             "p2_implied": round(_implied(p2_odds), 4),
             "book": "DraftKings",
-            "fetched_at": datetime.utcnow().isoformat(),
+            "fetched_at": _utc_now_iso(),
         })
 
     return results
@@ -128,7 +189,7 @@ def upsert_odds_snapshot(match_id: int, p1_odds: int, p2_odds: int) -> None:
         p1_implied=round(_implied(p1_odds), 4),
         p2_implied=round(_implied(p2_odds), 4),
         book="DraftKings",
-        snapshot_time=datetime.utcnow(),
+        snapshot_time=_utc_now_naive(),
     )
     with SessionLocal() as s:
         s.add(snapshot)
