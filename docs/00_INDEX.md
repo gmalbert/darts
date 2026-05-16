@@ -16,6 +16,7 @@ A comprehensive build guide for a darts betting analytics and stats site focused
 | `08_seo_and_content.md` | Content strategy, SEO, programmatic pages |
 | `09_legal_and_compliance.md` | Affiliate compliance, responsible gambling, disclaimers |
 | `10_overlooked.md` | Things most people miss — odds movement, steam tracking, community |
+| `11_data_seeding.md` | How to pull historical data, automate nightly updates via GH Actions |
 
 ## Target DraftKings Tournaments (Priority Order)
 
