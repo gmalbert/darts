@@ -103,11 +103,15 @@ def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool 
     print(f"\n=== BullzIQ Real Data Seeder  (years={year_range}, refresh_only={refresh_only}) ===\n")
 
     # ── 1. Clean existing tables ───────────────────────────────────────────────
-    if not refresh_only:
+    if refresh_only:
+        print("Rebuilding ORM tables from existing raw data + refreshed scrape...")
+    else:
         print("Dropping and recreating ORM tables...")
-        Base.metadata.drop_all(engine)
 
-        # Also drop raw_matches (plain SQLite, not in ORM)
+    Base.metadata.drop_all(engine)
+
+    if not refresh_only:
+        # Full rebuild starts from a blank raw staging table.
         _conn = sqlite3.connect(str(DB_PATH))
         _conn.execute("DROP TABLE IF EXISTS raw_matches")
         _conn.commit()
