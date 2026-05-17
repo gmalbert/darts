@@ -1,32 +1,49 @@
 """
-scrapers/odds_api.py — The Odds API integration for DraftKings darts lines.
+scrapers/odds_api.py — odds-api.io integration for DraftKings darts lines.
 
-Docs: https://the-odds-api.com/
-Free tier: 500 requests/month.
+Docs: https://docs.odds-api.io/
+Base URL: https://api.odds-api.io/v3
+Sport slug: darts
+Free tier: 100 req/hour, bookmakers locked to 2 at signup (DraftKings + BetMGM BR).
 
 Usage:
     from scrapers.odds_api import fetch_darts_odds, upsert_odds_snapshot
 
-Set ODDS_API_KEY in your .env file.
+Set ODDS_API_IO_KEY in your .env file.
 """
 
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
-BASE_URL = "https://api.the-odds-api.com/v4"
-SPORT = "darts_pdc"        # The Odds API sport key for PDC darts
-MARKETS = "h2h"            # head-to-head moneyline
-REGIONS = "us"             # US (DraftKings) odds
-ODDS_FORMAT = "american"
-BOOK_WHITELIST = {"draftkings"}
+ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "")
+BASE_URL = "https://api.odds-api.io/v3"
+SPORT = "darts"
+
+# Bookmakers available on the free plan (locked at account creation).
+# The ML market returns decimal odds; we convert to American integers.
+BOOKMAKERS = ["DraftKings", "BetMGM BR"]
+
+# Placeholder names used by odds-api.io before draw brackets are set.
+_PLACEHOLDER_PREFIXES = (
+    "winner of", "last 64", "last 32", "last 16",
+    "quarter-final", "semi-final", "sf player", "qf player",
+    "winner sf", "winner qf", "tbd", "player ",
+)
+
+# How long to reuse the paginated events list before re-fetching (seconds).
+EVENT_CACHE_TTL_SEC = 1800  # 30 minutes
+
+# Module-level event cache.
+_events_cache: list[dict] = []
+_events_cache_ts: float = 0.0
 
 
 def _utc_now_iso() -> str:
@@ -34,139 +51,208 @@ def _utc_now_iso() -> str:
 
 
 def _utc_now_naive() -> datetime:
-    # DB columns are stored as naive UTC datetimes.
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _discover_darts_sport_keys() -> list[str]:
-    """Return likely darts sport keys from The Odds API /sports endpoint."""
-    url = f"{BASE_URL}/sports"
+def _is_real_player(name: str) -> bool:
+    """Return False for bracket-placeholder names that aren't real players yet."""
+    n = name.strip().lower()
+    return not any(n.startswith(p) for p in _PLACEHOLDER_PREFIXES)
+
+
+def _decimal_to_american(decimal_odds: float) -> int:
+    """Convert decimal odds (e.g. 1.91) to American moneyline integer."""
+    if decimal_odds >= 2.0:
+        return round((decimal_odds - 1) * 100)
+    return round(-100.0 / (decimal_odds - 1))
+
+
+def _decimal_to_implied(decimal_odds: float) -> float:
+    """Decimal odds → implied probability [0, 1]."""
+    if decimal_odds <= 0:
+        return 0.0
+    return round(1.0 / decimal_odds, 4)
+
+
+def _get(path: str, params: dict) -> requests.Response | None:
+    """GET helper; returns None on network error."""
+    params = {"apiKey": ODDS_API_IO_KEY, **params}
     try:
-        resp = requests.get(url, params={"apiKey": ODDS_API_KEY}, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException:
-        return []
-
-    keys: list[str] = []
-    for sport in resp.json():
-        key = str(sport.get("key", ""))
-        if "darts" in key.lower() and key not in keys:
-            keys.append(key)
-
-    # Prioritize obvious PDC-style keys first.
-    keys.sort(key=lambda k: ("pdc" not in k.lower(), k))
-    return keys
+        resp = requests.get(f"{BASE_URL}/{path}", params=params, timeout=15)
+        return resp
+    except requests.RequestException as exc:
+        print(f"odds-api.io request failed ({path}): {exc}")
+        return None
 
 
-def fetch_darts_odds() -> list[dict]:
+def _fetch_all_darts_events() -> list[dict]:
     """
-    Fetch current PDC darts odds from The Odds API.
-    Returns a list of match dicts with p1/p2 name and American odds.
+    Paginate /events for all pending/live darts events.
+    Results are cached for EVENT_CACHE_TTL_SEC (30 min) to conserve the
+    100 req/hr budget — callers receive the cached list at zero API cost.
     """
-    if not ODDS_API_KEY:
-        print("ODDS_API_KEY not set. Skipping odds fetch.")
+    global _events_cache, _events_cache_ts
+    now = time.monotonic()
+    if _events_cache and (now - _events_cache_ts) < EVENT_CACHE_TTL_SEC:
+        return _events_cache
+
+    events: list[dict] = []
+    skip = 0
+    limit = 50
+    while True:
+        resp = _get("events", {"sport": SPORT, "status": "pending,live",
+                                "limit": limit, "skip": skip})
+        if resp is None or resp.status_code != 200:
+            break
+        page = resp.json()
+        if not isinstance(page, list) or not page:
+            break
+        events.extend(page)
+        if len(page) < limit:
+            break
+        skip += limit
+
+    if events:
+        _events_cache = events
+        _events_cache_ts = now
+    return events
+
+
+def fetch_darts_events() -> list[dict]:
+    """
+    Return all pending/live darts events from odds-api.io with resolved player names.
+    Each dict has: event_id, player1, player2, commence_time, league_name.
+    Does NOT fetch odds (costs 1 req/event); use fetch_darts_odds() for that.
+    """
+    if not ODDS_API_IO_KEY:
+        return []
+    events = _fetch_all_darts_events()
+    return [
+        {
+            "event_id": str(e["id"]),
+            "player1": e.get("home", ""),
+            "player2": e.get("away", ""),
+            "commence_time": e.get("date", ""),
+            "league_name": e.get("league", {}).get("name", ""),
+        }
+        for e in events
+        if _is_real_player(e.get("home", "")) and _is_real_player(e.get("away", ""))
+    ]
+
+
+def fetch_darts_odds(
+    events: list[dict] | None = None,
+    days_ahead: int = 3,
+) -> list[dict]:
+    """
+    Fetch current darts odds from odds-api.io.
+    Returns a list of match dicts with p1/p2 names and American moneyline odds.
+    Only events that have at least one bookmaker ML market are included.
+
+    Args:
+        events: Pre-fetched event list from _fetch_all_darts_events() or
+                fetch_darts_events().  Pass this to avoid a redundant pagination
+                call when the caller already has the list.  If None, fetches fresh.
+        days_ahead: Only request odds for events starting within this many days.
+                    Keeps per-run request count low (1 call per qualifying event).
+                    Default 3 days for seeding; use 1 for the 10-min scheduler job.
+    """
+    if not ODDS_API_IO_KEY:
+        print("ODDS_API_IO_KEY not set. Skipping odds fetch.")
         return []
 
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": REGIONS,
-        "markets": MARKETS,
-        "oddsFormat": ODDS_FORMAT,
-        "bookmakers": ",".join(BOOK_WHITELIST),
-    }
-
-    discovered = _discover_darts_sport_keys()
-    if not discovered:
-        print("Odds API: no darts sport keys available for this account right now.")
+    if events is None:
+        events = _fetch_all_darts_events()
+    if not events:
+        print("odds-api.io: no darts events found.")
         return []
 
-    candidate_keys: list[str] = []
-    if SPORT in discovered:
-        candidate_keys.append(SPORT)
-    candidate_keys.extend([k for k in discovered if k not in candidate_keys])
+    cutoff = datetime.now(timezone.utc) + timedelta(days=days_ahead)
 
-    resp = None
-    used_sport = SPORT
-
-    while candidate_keys:
-        sport_key = candidate_keys.pop(0)
-        url = f"{BASE_URL}/sports/{sport_key}/odds"
+    # Filter to resolved-name events within the time window
+    candidate_events = []
+    for e in events:
+        if not (_is_real_player(e.get("home", "")) and _is_real_player(e.get("away", ""))):
+            continue
         try:
-            current = requests.get(url, params=params, timeout=15)
-        except requests.RequestException as exc:
-            print(f"Odds API fetch failed for sport '{sport_key}': {exc}")
-            return []
+            start = datetime.fromisoformat(e["date"].replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        if start <= cutoff:
+            candidate_events.append(e)
 
-        if current.status_code == 404:
-            print(f"Odds API sport key '{sport_key}' not found (404).")
+    print(f"odds-api.io: {len(events)} darts events total, "
+          f"{len(candidate_events)} within {days_ahead}d with resolved names.")
+
+    results: list[dict] = []
+    requests_used = 0
+
+    for event in candidate_events:
+        eid = event["id"]
+        home = event.get("home", "")
+        away = event.get("away", "")
+        commence = event.get("date", "")
+
+        resp = _get("odds", {"eventId": eid,
+                             "bookmakers": ",".join(BOOKMAKERS)})
+        requests_used += 1
+        if resp is None or resp.status_code != 200:
             continue
 
-        try:
-            current.raise_for_status()
-        except requests.RequestException as exc:
-            print(f"Odds API fetch failed for sport '{sport_key}': {exc}")
-            return []
-
-        resp = current
-        used_sport = sport_key
-        break
-
-    if resp is None:
-        print("Odds API fetch failed: no valid darts sport key returned odds.")
-        return []
-
-    # Log remaining quota
-    remaining = resp.headers.get("x-requests-remaining", "?")
-    used = resp.headers.get("x-requests-used", "?")
-    print(f"Odds API ({used_sport}): {used} used / {remaining} remaining this month")
-
-    data = resp.json()
-    results = []
-
-    for event in data:
-        home_team = event.get("home_team", "")
-        away_team = event.get("away_team", "")
-        commence_time = event.get("commence_time", "")
-
-        dk_bookmaker = next(
-            (b for b in event.get("bookmakers", []) if b["key"] in BOOK_WHITELIST),
-            None,
-        )
-        if not dk_bookmaker:
+        data = resp.json()
+        bookmakers_data = data.get("bookmakers", {})
+        if not bookmakers_data:
             continue
 
-        h2h_market = next(
-            (m for m in dk_bookmaker.get("markets", []) if m["key"] == "h2h"),
-            None,
-        )
-        if not h2h_market:
+        # Try each preferred bookmaker in order
+        ml_home: float | None = None
+        ml_away: float | None = None
+        book_used: str = ""
+
+        for bk_name in BOOKMAKERS:
+            markets = bookmakers_data.get(bk_name)
+            if not markets:
+                continue
+            ml_market = next((m for m in markets if m.get("name") == "ML"), None)
+            if not ml_market:
+                continue
+            odds_list = ml_market.get("odds", [])
+            if not odds_list:
+                continue
+            o = odds_list[0]
+            home_dec = o.get("home")
+            away_dec = o.get("away")
+            if home_dec is None or away_dec is None:
+                continue
+            try:
+                ml_home = float(home_dec)
+                ml_away = float(away_dec)
+                book_used = bk_name
+                break
+            except (ValueError, TypeError):
+                continue
+
+        if ml_home is None or ml_away is None:
             continue
 
-        outcomes = {o["name"]: o["price"] for o in h2h_market.get("outcomes", [])}
-        p1_odds = outcomes.get(home_team)
-        p2_odds = outcomes.get(away_team)
-
-        if p1_odds is None or p2_odds is None:
-            continue
-
-        def _implied(odds: float) -> float:
-            if odds < 0:
-                return (-odds) / (-odds + 100)
-            return 100 / (odds + 100)
+        p1_american = _decimal_to_american(ml_home)
+        p2_american = _decimal_to_american(ml_away)
 
         results.append({
-            "event_id": event.get("id", ""),
-            "player1": home_team,
-            "player2": away_team,
-            "commence_time": commence_time,
-            "p1_odds": int(p1_odds),
-            "p2_odds": int(p2_odds),
-            "p1_implied": round(_implied(p1_odds), 4),
-            "p2_implied": round(_implied(p2_odds), 4),
-            "book": "DraftKings",
+            "event_id": str(eid),
+            "player1": home,
+            "player2": away,
+            "commence_time": commence,
+            "p1_odds": p1_american,
+            "p2_odds": p2_american,
+            "p1_implied": _decimal_to_implied(ml_home),
+            "p2_implied": _decimal_to_implied(ml_away),
+            "book": book_used,
             "fetched_at": _utc_now_iso(),
         })
 
+    print(f"odds-api.io: {requests_used} odds requests used, "
+          f"{len(results)} events with ML odds returned.")
     return results
 
 
@@ -201,45 +287,82 @@ def refresh_all_odds() -> int:
     Fetch latest odds and upsert snapshots for all upcoming matches.
     Returns number of snapshots written.
     Used by the APScheduler 10-minute job.
+
+    Rate budget: fetches events once (cached) + 1 call per event in next 24h.
+    Typical cost: 0-3 pagination calls + 3-8 odds calls = well under 100/hr.
     """
-    from db.schema import SessionLocal, Match, Player
     from db.queries import get_upcoming_matches
 
     upcoming = get_upcoming_matches(days=7)
     if upcoming.empty:
         return 0
 
-    api_odds = fetch_darts_odds()
+    # Fetch events once; pass to fetch_darts_odds to avoid re-pagination.
+    # days_ahead=1: only pay for odds on matches starting in the next 24 hours.
+    events = _fetch_all_darts_events()
+    api_odds = fetch_darts_odds(events=events, days_ahead=1)
     if not api_odds:
         return 0
 
-    # Match API events to DB matches by player name
+    # Match API events to DB matches by fuzzy player name
     written = 0
-    with SessionLocal() as s:
-        for row in upcoming.itertuples():
-            match_odds = next(
-                (
-                    o for o in api_odds
-                    if (
-                        o["player1"].lower() in row.player1.lower()
-                        or row.player1.lower() in o["player1"].lower()
-                    )
-                ),
-                None,
-            )
-            if match_odds:
-                upsert_odds_snapshot(
-                    row.match_id,
-                    match_odds["p1_odds"],
-                    match_odds["p2_odds"],
+    for row in upcoming.itertuples():
+        p1_lower = row.player1.lower()
+        p2_lower = row.player2.lower()
+        match_odds = next(
+            (
+                o for o in api_odds
+                if (
+                    _name_match(o["player1"], p1_lower)
+                    or _name_match(o["player1"], p2_lower)
                 )
-                written += 1
+            ),
+            None,
+        )
+        if match_odds:
+            upsert_odds_snapshot(
+                row.match_id,
+                match_odds["p1_odds"],
+                match_odds["p2_odds"],
+            )
+            written += 1
 
     return written
 
 
+def _name_match(api_name: str, db_name_lower: str) -> bool:
+    """
+    Fuzzy match between odds-api.io name (e.g. "Clayton, Jonny") and
+    DB name (e.g. "jonny clayton").  Handles "Surname, First" and
+    "First Surname" formats.
+    """
+    api_lower = api_name.lower()
+
+    # Direct substring match
+    if api_lower in db_name_lower or db_name_lower in api_lower:
+        return True
+
+    # Handle "Surname, First" → "first surname"
+    if "," in api_lower:
+        parts = [p.strip() for p in api_lower.split(",", 1)]
+        reordered = f"{parts[1]} {parts[0]}"
+        if reordered in db_name_lower or db_name_lower in reordered:
+            return True
+
+    # Last name only match (fallback)
+    last = api_lower.split(",")[0].strip()
+    if last and last in db_name_lower:
+        return True
+
+    return False
+
+
 if __name__ == "__main__":
-    print("Testing odds fetch...")
+    print("Testing odds-api.io darts fetch...")
     odds = fetch_darts_odds()
-    for o in odds:
-        print(f"  {o['player1']} ({o['p1_odds']}) vs {o['player2']} ({o['p2_odds']})")
+    if odds:
+        for o in odds:
+            print(f"  {o['player1']} ({o['p1_odds']:+d}) vs "
+                  f"{o['player2']} ({o['p2_odds']:+d})  [{o['book']}]")
+    else:
+        print("  No odds returned (markets may not be open yet).")

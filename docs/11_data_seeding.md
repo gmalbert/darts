@@ -2,10 +2,10 @@
 
 ## Overview
 
-BullzIQ uses a **two-tier data strategy**:
+BullzIQ uses a **real-data-first strategy**:
 
 1. **Real PDC Data** (dartsdatabase.co.uk) — Full historical match results from 2015–present
-2. **Demo Data** (fallback) — Sample matches for testing if real scraping fails
+2. **No automatic demo fallback** — seeding aborts if real scrape data is unavailable
 
 Users **always load a pre-seeded database** so they don't wait for cold-start scrapes. The seeding process runs:
 - **Nightly** via GitHub Actions (automated)
@@ -193,7 +193,7 @@ After each successful seed, the workflow commits:
 2. Wait a few minutes and retry (polite delay is 1 second between requests)
 3. Check network/firewall isn't blocking dartsdatabase.co.uk
 
-**Fallback:** If scraping fails, `seed_real.py` automatically falls back to demo data so the app still runs.
+**Behavior:** If scraping fails, `seed_real.py` aborts with an error. It does not auto-seed demo data.
 
 ---
 
@@ -256,7 +256,7 @@ git push
 |-------|---------|--------|
 | `raw_matches` | Temporary hold for scraped data | dartsdatabase.co.uk |
 | `players` | Player records with Elo, stats | ORM |
-| `tournaments` | Tournament metadata | ORM + demo data |
+| `tournaments` | Tournament metadata | ORM |
 | `matches` | Match records with scores, winner | ORM (from raw_matches) |
 | `elo_history` | Audit trail of Elo changes per match | ORM (computed) |
 | `odds_snapshots` | Live odds cache (DraftKings) | The Odds API |
@@ -267,7 +267,7 @@ git push
 |------|---------|
 | `db/seed_real.py` | Main seeding orchestrator |
 | `scrapers/dartsdatabase.py` | HTML scraper + event discovery |
-| `db/seed.py` | Demo seeder (fallback) |
+| `db/seed.py` | Startup DB checks (no auto demo fallback) |
 | `db/schema.py` | ORM schema definitions |
 | `models/elo.py` | Elo rating engine |
 | `.github/workflows/seed_db.yml` | GitHub Actions automation |
@@ -290,7 +290,7 @@ git push
 - **Raw data** (`raw_matches`) is **dropped on each full seed** — temporary staging table
 - **ORM data** (players, matches, elo_history) is **versioned** — old records kept for audit
 - **Flag file** (`db_is_real.flag`) indicates when real data was last loaded
-- **Demo data** is never automatically deleted — manually clear if needed
+- **Demo data** is not automatically seeded by app startup or real seeding
 
 ---
 

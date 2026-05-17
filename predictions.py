@@ -25,7 +25,7 @@ ensure_seeded()
 
 # ── Shared components ─────────────────────────────────────────────────────────
 from components.styles import (
-    inject_css, get_theme, render_theme_picker,
+    inject_css, get_theme, chart_style, themed_dataframe,
     format_american_odds, edge_badge_html, confidence_badge_html,
 )
 from components.disclaimers import (
@@ -92,14 +92,15 @@ def _render_schedule_row(row: pd.Series) -> None:
     p2 = row.get("player2", "")
     p1_odds = row.get("p1_odds")
     p2_odds = row.get("p2_odds")
-    rnd = row.get("round", "")
+    rnd = row.get("round")
+    rnd_str = rnd.strip() if isinstance(rnd, str) and rnd.strip() else "TBD"
 
     with st.container(border=True):
         c1, c2, c3, c4, c5 = st.columns([2, 1.5, 0.3, 1.5, 1.5])
         with c1:
             st.markdown(
                 f"<span style='color:var(--biq-muted); font-size:0.8rem;'>{time_str}</span><br>"
-                f"<span style='font-size:0.78rem; color:var(--biq-muted);'>{rnd}</span>",
+                f"<span style='font-size:0.78rem; color:var(--biq-muted);'>{rnd_str}</span>",
                 unsafe_allow_html=True,
             )
         with c2:
@@ -118,6 +119,11 @@ def _render_schedule_row(row: pd.Series) -> None:
                 st.markdown(
                     f"<span style='color:var(--biq-accent2);'>{o1}</span> / "
                     f"<span style='color:var(--biq-accent2);'>{o2}</span>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    "<span style='color:var(--biq-muted);'>Lines not open yet</span>",
                     unsafe_allow_html=True,
                 )
 
@@ -164,12 +170,12 @@ def _render_steam_row(row: pd.Series) -> None:
 
 def home_page() -> None:
     inject_css(get_theme())
+    chart = chart_style()
 
-    # Sidebar — logo + theme picker only
+    # Sidebar — logo only
     with st.sidebar:
         if LOGO_PATH.exists():
             st.image(str(LOGO_PATH), width=180)
-        render_theme_picker()
 
     # Header — no logo, just title + tagline
     st.markdown(
@@ -311,7 +317,7 @@ def home_page() -> None:
                     str(record30['brier_score']),
                 ],
             }
-            st.dataframe(pd.DataFrame(perf_data), hide_index=True, use_container_width=True)
+            themed_dataframe(pd.DataFrame(perf_data), hide_index=True, use_container_width=True)
             st.info(
                 "**Brier Score**: Calibration metric (0 = perfect, 1 = worst). "
                 "Industry benchmark for well-calibrated models ≈ 0.22."
@@ -320,13 +326,18 @@ def home_page() -> None:
             if not picks_chart.empty:
                 fig_h = go.Figure(go.Histogram(
                     x=picks_chart["edge_pct"], nbinsx=20,
-                    marker_color="#e10600", opacity=0.8,
+                    marker_color=chart["accent"], opacity=0.8,
                 ))
                 fig_h.update_layout(
                     title="Current Pick Edge Distribution",
                     xaxis_title="Edge %", yaxis_title="Count",
-                    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)", height=260,
+                    template=chart["template"],
+                    paper_bgcolor=chart["paper_bgcolor"],
+                    plot_bgcolor=chart["plot_bgcolor"],
+                    font=dict(color=chart["text"]),
+                    xaxis=dict(gridcolor=chart["grid"]),
+                    yaxis=dict(gridcolor=chart["grid"]),
+                    height=260,
                     margin=dict(l=10, r=10, t=40, b=30),
                 )
                 st.plotly_chart(fig_h, use_container_width=True)
@@ -341,6 +352,7 @@ def home_page() -> None:
 def _render_history_tab() -> None:
     """Historical performance analytics — Elo trajectories + yearly breakdown."""
     from db.queries import get_all_players, get_elo_history, get_yearly_stats
+    chart = chart_style()
 
     st.markdown("### 📈 Historical Model Performance (2015–Present)")
     st.caption(
@@ -362,7 +374,7 @@ def _render_history_tab() -> None:
     if selected_players:
         fig_elo = go.Figure()
         palette = [
-            "#e10600", "#58a6ff", "#3fb950", "#f0a500", "#a855f7",
+            chart["accent"], chart["accent2"], chart["pos"], "#f0a500", "#a855f7",
             "#14b8a6", "#ec4899", "#f59e0b", "#6366f1", "#34d399",
             "#f87171", "#facc15",
         ]
@@ -387,12 +399,15 @@ def _render_history_tab() -> None:
         fig_elo.update_layout(
             xaxis_title="Date",
             yaxis_title="Elo Rating",
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
+            template=chart["template"],
+            paper_bgcolor=chart["paper_bgcolor"],
+            plot_bgcolor=chart["plot_bgcolor"],
+            font=dict(color=chart["text"]),
             height=380,
             margin=dict(l=10, r=10, t=20, b=40),
             legend=dict(orientation="h", y=-0.25),
+            xaxis=dict(gridcolor=chart["grid"]),
+            yaxis=dict(gridcolor=chart["grid"]),
         )
         st.plotly_chart(fig_elo, use_container_width=True)
     else:
@@ -412,7 +427,7 @@ def _render_history_tab() -> None:
                 x=yearly["year"].astype(str),
                 y=yearly["total_matches"],
                 name="Total Matches",
-                marker_color="#58a6ff",
+                marker_color=chart["accent2"],
                 opacity=0.8,
             ))
             if "avg_elo_spread" in yearly.columns:
@@ -422,7 +437,7 @@ def _render_history_tab() -> None:
                     name="Avg Elo Spread",
                     yaxis="y2",
                     mode="lines+markers",
-                    line=dict(color="#e10600", width=2),
+                    line=dict(color=chart["accent"], width=2),
                     marker=dict(size=6),
                 ))
                 fig_yr.update_layout(
@@ -436,13 +451,16 @@ def _render_history_tab() -> None:
             fig_yr.update_layout(
                 xaxis_title="Year",
                 yaxis_title="Matches",
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=320,
                 margin=dict(l=10, r=10, t=20, b=40),
                 barmode="group",
                 legend=dict(orientation="h", y=-0.3),
+                xaxis=dict(gridcolor=chart["grid"]),
+                yaxis=dict(gridcolor=chart["grid"]),
             )
             st.plotly_chart(fig_yr, use_container_width=True)
 
@@ -450,7 +468,7 @@ def _render_history_tab() -> None:
             display_cols = ["year", "total_matches"]
             if "avg_elo_spread" in yearly.columns:
                 display_cols.append("avg_elo_spread")
-            st.dataframe(
+            themed_dataframe(
                 yearly[display_cols].rename(columns={
                     "year": "Year",
                     "total_matches": "Matches",
@@ -471,7 +489,7 @@ def _render_history_tab() -> None:
     if not era_df.empty:
         fig_era = go.Figure()
         eras = era_df["era"].unique()
-        palette2 = ["#e10600", "#58a6ff", "#3fb950"]
+        palette2 = [chart["accent"], chart["accent2"], chart["pos"]]
         for j, era in enumerate(eras):
             sub = era_df[era_df["era"] == era].head(8)
             fig_era.add_trace(go.Bar(
@@ -486,12 +504,15 @@ def _render_history_tab() -> None:
             xaxis_title="Player",
             yaxis_title="Win Rate",
             yaxis_tickformat=".0%",
-            template="plotly_dark",
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
+            template=chart["template"],
+            paper_bgcolor=chart["paper_bgcolor"],
+            plot_bgcolor=chart["plot_bgcolor"],
+            font=dict(color=chart["text"]),
             height=320,
             margin=dict(l=10, r=10, t=20, b=80),
             legend=dict(title="Era", orientation="h", y=-0.4),
+            xaxis=dict(gridcolor=chart["grid"]),
+            yaxis=dict(gridcolor=chart["grid"]),
         )
         st.plotly_chart(fig_era, use_container_width=True)
     else:

@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.styles import inject_css, get_theme, render_theme_picker, nat_flag, format_american_odds
+from components.styles import inject_css, get_theme, chart_style, themed_dataframe, nat_flag, format_american_odds
 from components.disclaimers import page_footer
 from db.queries import (
     get_upcoming_matches,
@@ -19,9 +19,7 @@ from db.queries import (
 )
 
 inject_css(get_theme())
-
-with st.sidebar:
-    render_theme_picker()
+chart = chart_style()
 
 st.markdown("## 🎮 Match Center")
 st.caption("Upcoming fixtures, live odds, match statistics, and historical results.")
@@ -58,7 +56,8 @@ with tab_upcoming:
                     time_str = dt.strftime("%a %b %d, %I:%M %p") if pd.notna(dt) else "TBD"
                     p1 = row.get("player1", "")
                     p2 = row.get("player2", "")
-                    rnd = row.get("round", "")
+                    rnd = row.get("round")
+                    rnd_str = rnd.strip() if isinstance(rnd, str) and rnd.strip() else "TBD"
                     legs = row.get("legs_to_win", 6)
                     p1_odds = row.get("p1_odds")
                     p2_odds = row.get("p2_odds")
@@ -69,8 +68,8 @@ with tab_upcoming:
 
                     with c_time:
                         st.markdown(
-                            f"<span style='color:#8b949e; font-size:0.82rem;'>{time_str}</span><br>"
-                            f"<span style='font-size:0.75rem; color:#6e7681;'>{rnd}</span>",
+                            f"<span style='color:var(--biq-muted); font-size:0.82rem;'>{time_str}</span><br>"
+                            f"<span style='font-size:0.75rem; color:var(--biq-muted);'>{rnd_str}</span>",
                             unsafe_allow_html=True,
                         )
                     with c_p1:
@@ -79,11 +78,11 @@ with tab_upcoming:
                         st.markdown(f"{flag1} **{p1}**")
                         if p1_impl:
                             st.markdown(
-                                f"<span style='color:#8b949e; font-size:0.78rem;'>{round(p1_impl*100,1)}% implied</span>",
+                                f"<span style='color:var(--biq-muted); font-size:0.78rem;'>{round(p1_impl*100,1)}% implied</span>",
                                 unsafe_allow_html=True,
                             )
                     with c_vs:
-                        st.markdown("<div style='text-align:center; margin-top:8px; color:#8b949e;'>vs</div>",
+                        st.markdown("<div style='text-align:center; margin-top:8px; color:var(--biq-muted);'>vs</div>",
                                     unsafe_allow_html=True)
                     with c_p2:
                         p2_data = get_player_by_name(p2)
@@ -91,27 +90,27 @@ with tab_upcoming:
                         st.markdown(f"{flag2} **{p2}**")
                         if p2_impl:
                             st.markdown(
-                                f"<span style='color:#8b949e; font-size:0.78rem;'>{round(p2_impl*100,1)}% implied</span>",
+                                f"<span style='color:var(--biq-muted); font-size:0.78rem;'>{round(p2_impl*100,1)}% implied</span>",
                                 unsafe_allow_html=True,
                             )
                     with c_odds:
                         if pd.notna(p1_odds) and pd.notna(p2_odds):
                             o1 = format_american_odds(int(p1_odds))
                             o2 = format_american_odds(int(p2_odds))
-                            clr1 = "#3fb950" if int(p1_odds) > 0 else "#f85149"
-                            clr2 = "#3fb950" if int(p2_odds) > 0 else "#f85149"
+                            clr1 = "var(--biq-pos)" if int(p1_odds) > 0 else "var(--biq-neg)"
+                            clr2 = "var(--biq-pos)" if int(p2_odds) > 0 else "var(--biq-neg)"
                             st.markdown(
                                 f"<span style='color:{clr1}; font-weight:700;'>{o1}</span>  "
-                                f"<span style='color:#8b949e;'>/</span>  "
+                                f"<span style='color:var(--biq-muted);'>/</span>  "
                                 f"<span style='color:{clr2}; font-weight:700;'>{o2}</span>",
                                 unsafe_allow_html=True,
                             )
                         else:
-                            st.markdown("<span style='color:#6e7681;'>Odds TBD</span>",
+                            st.markdown("<span style='color:var(--biq-muted);'>Lines not open yet</span>",
                                         unsafe_allow_html=True)
                     with c_format:
                         st.markdown(
-                            f"<span style='color:#58a6ff; font-size:0.78rem;'>BO{legs*2-1}</span>",
+                            f"<span style='color:var(--biq-accent2); font-size:0.78rem;'>BO{legs*2-1}</span>",
                             unsafe_allow_html=True,
                         )
 
@@ -149,7 +148,7 @@ with tab_results:
         # Format for display
         filtered["date"] = pd.to_datetime(filtered["date"]).dt.strftime("%b %d, %Y")
         display_cols = ["date", "tournament", "round", "player1", "score", "player2", "winner"]
-        st.dataframe(
+        themed_dataframe(
             filtered[display_cols].rename(columns={
                 "date": "Date", "tournament": "Tournament", "round": "Round",
                 "player1": "Player 1", "score": "Score", "player2": "Player 2",
@@ -191,7 +190,9 @@ with tab_detail:
 
         # ── Match header ──────────────────────────────────────────────────────
         st.markdown(f"#### {p1} vs {p2}")
-        st.caption(f"{sel_row['tournament']} · {sel_row['round']}")
+        round_val = sel_row.get("round") if hasattr(sel_row, "get") else sel_row["round"]
+        round_str = round_val.strip() if isinstance(round_val, str) and round_val.strip() else "TBD"
+        st.caption(f"{sel_row['tournament']} · {round_str}")
 
         if not odds_hist.empty:
             # ── Odds movement chart ───────────────────────────────────────────
@@ -201,7 +202,7 @@ with tab_detail:
                 y=odds_hist["p1_implied"] * 100,
                 name=p1,
                 mode="lines+markers",
-                line=dict(color="#e10600", width=2),
+                line=dict(color=chart["accent"], width=2),
                 marker=dict(size=6),
             ))
             fig.add_trace(go.Scatter(
@@ -209,24 +210,26 @@ with tab_detail:
                 y=odds_hist["p2_implied"] * 100,
                 name=p2,
                 mode="lines+markers",
-                line=dict(color="#58a6ff", width=2),
+                line=dict(color=chart["accent2"], width=2),
                 marker=dict(size=6),
             ))
             fig.add_hline(
-                y=50, line_dash="dot", line_color="#30363d",
+                y=50, line_dash="dot", line_color=chart["grid"],
                 annotation_text="50% line", annotation_position="bottom right",
             )
             fig.update_layout(
                 title="DraftKings Implied Probability — 3-Hour Window",
                 xaxis_title="Time",
                 yaxis_title="Implied Probability (%)",
-                template="plotly_dark",
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#161b22",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=380,
                 margin=dict(l=10, r=10, t=50, b=40),
                 legend=dict(orientation="h", y=-0.15),
-                yaxis=dict(range=[0, 100], ticksuffix="%"),
+                yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=chart["grid"]),
+                xaxis=dict(gridcolor=chart["grid"]),
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -280,7 +283,7 @@ with tab_detail:
                 with hw3:
                     st.metric(f"{p2} Wins", p2_w)
 
-                st.dataframe(
+                themed_dataframe(
                     h2h_df[["date", "score", "winner_id"]].head(10),
                     hide_index=True,
                     use_container_width=True,

@@ -1,241 +1,87 @@
-# Darts Analytics
+<p align="center">
+	<img src="data_files/logo.png" alt="BullzIQ logo" width="220" />
+</p>
 
-A Streamlit-powered betting analytics app for PDC darts tournaments covered by DraftKings. Model-driven picks, player stats, live odds tracking, and interactive tools — all in Python.
+# BullzIQ (PDC Darts Analytics)
 
-> **Disclaimer:** Model outputs are for informational purposes only. Not betting advice. 21+ only where legal. Gambling problem? Call 1-800-522-4700.
+BullzIQ is a Streamlit app for PDC darts analytics with:
+- Elo-based player ratings
+- Match and props modeling
+- Upcoming fixture tracking
+- DraftKings odds ingestion and movement views
+
+The project is now **real-data-first** (no automatic demo fallback).
+
+---
+
+## Current Data/Platform Status
+
+- Historical match data: scraped from dartsdatabase.co.uk
+- Live odds provider: odds-api.io (`/v3`, sport=`darts`)
+- Bookmakers on current plan: DraftKings + BetMGM BR
+- Odds API rate limit: 100 requests/hour
+- App theme: auto day/night based on browser local time
+	- Day: Sky Glass
+	- Night: Petrol
+
+### Why you may see "Lines not open yet"
+
+This is expected when upcoming fixtures are in the DB but sportsbooks have not posted moneylines yet.
+Fixtures can appear before odds snapshots exist.
 
 ---
 
 ## Features
 
-### Match Center
-Every DK-covered match gets a dedicated analysis page with:
-- Model win probability vs. DraftKings implied odds (edge %)
-- Head-to-head stat comparison (3-dart avg, checkout %, 180s per leg)
-- H2H history table
-- Odds movement chart with steam move detection
-- Embedded 180s over/under calculator
+### Predictions (Home)
+- Daily picks ranked by model edge
+- Upcoming schedule
+- Steam move panel
+- Historical performance charts
 
-### Player Profiles
-- Elo rating history chart (Plotly)
-- Career stats and recent-form metrics
-- Tournament breakdown table
-- Last 20 match results
+### Players
+- Elo rankings and history charts
+- Player profile stats
+- Recent matches
+- Head-to-head comparison
 
-### Today's Picks Feed
-- All model picks ranked by edge %
-- Adjustable minimum-edge filter slider
-- Market filter (H2H, 180s Over, 180s Under)
-- Reasoning bullets for each pick
+### Matches
+- Upcoming fixtures (with odds when available)
+- Recent results
+- Match-level odds movement + H2H details
 
-### Odds Tracker
-- Live DraftKings odds snapshots (refreshed every 10 minutes)
-- Line movement chart per match
-- Steam move alerts (≥3 percentage point shift in 30 minutes)
+### Odds
+- Current lines
+- Implied probability movement
+- Steam move feed
 
-### Interactive Tools
-- **Edge Calculator** — enter odds and your probability estimate, get edge % and quarter-Kelly sizing
-- **180s Calculator** — Poisson-based over/under expected value tool
-- **H2H Tool** — compare any two players head-to-head
-
-### Tournament Hubs
-Coverage for all 9 DraftKings-booked PDC events:
-- PDC World Championship
-- Premier League Darts
-- World Matchplay
-- Grand Slam of Darts
-- World Series of Darts
-- European Tour
-- UK Open
-- World Grand Prix
-- Players Championship Finals
+### Tools
+- Edge calculator
+- 180s calculator
+- Format variance explorer
+- Parlay edge helper
 
 ---
 
-## Tech Stack
+## Odds Ingestion Notes
 
-| Layer | Technology |
-|-------|-----------|
-| App | Streamlit |
-| Database | SQLite (dev) → PostgreSQL (prod) |
-| ORM | SQLAlchemy |
-| Data | pandas, numpy |
-| Charts | Plotly |
-| ML | scikit-learn, scipy |
-| Scrapers | requests, BeautifulSoup |
-| Scheduler | APScheduler |
-| Deploy | Streamlit Community Cloud / Railway |
+- Upcoming match stubs are created independently from odds availability.
+- Odds snapshots are only written when ML markets exist.
+- The scheduler refreshes odds periodically (see [jobs/scheduler.py](jobs/scheduler.py)).
+
+If fixtures are visible but odds are missing, the most common reason is simply that lines are not open yet.
 
 ---
 
-## Project Structure
+## Documentation
 
-```
-darts-app/
-├── app.py                      # Home page (schedule + top picks)
-├── pages/
-│   ├── 1_Tournaments.py
-│   ├── 2_Players.py
-│   ├── 3_Matches.py
-│   ├── 4_Picks.py
-│   ├── 5_Odds.py
-│   └── 6_Tools.py
-├── components/
-│   ├── match_center.py
-│   ├── player_profile.py
-│   ├── picks_feed.py
-│   ├── odds_chart.py
-│   └── disclaimers.py
-├── models/
-│   ├── elo.py
-│   ├── match_predictor.py
-│   └── props_model.py
-├── scrapers/
-│   ├── dartsdatabase.py
-│   ├── dartsdata_api.py
-│   └── odds_api.py
-├── db/
-│   ├── schema.py
-│   └── queries.py
-├── jobs/
-│   ├── scheduler.py
-│   └── steam_detector.py
-├── scripts/
-│   └── train_predictor.py
-├── data_files/
-├── .streamlit/
-│   └── config.toml
-├── requirements.txt
-└── .env.example
-```
+- Seeding guide: [docs/11_data_seeding.md](docs/11_data_seeding.md)
+- Data sources: [docs/01_data_sources.md](docs/01_data_sources.md)
+- Models: [docs/02_models.md](docs/02_models.md)
+- Legal/compliance: [docs/09_legal_and_compliance.md](docs/09_legal_and_compliance.md)
 
 ---
 
-## Getting Started
+## Disclaimer
 
-### Prerequisites
-- Python 3.11+
-- Git
-
-### Installation
-
-```bash
-git clone <your-repo>
-cd darts-app
-
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-
-pip install -r requirements.txt
-cp .env.example .env           # add your API keys
-```
-
-### Seed Historical Data
-
-```bash
-python -m scrapers.dartsdatabase seed --start-year 2000
-```
-
-This pulls ~15,000 PDC match results from dartsdatabase.co.uk (free, no API key needed).
-
-### Run Locally
-
-```bash
-streamlit run app.py
-```
-
-Open [http://localhost:8501](http://localhost:8501).
-
-### Train the Match Predictor
-
-```bash
-python scripts/train_predictor.py
-```
-
-Trains on historical data and saves the model to `models/match_predictor.pkl`. Target Brier score < 0.22.
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and fill in:
-
-```
-DATABASE_URL=sqlite:///data_files/darts.db   # PostgreSQL URL for production
-ODDS_API_KEY=                                 # from the-odds-api.com (free: 500 req/mo)
-DK_AFFILIATE_ID=                              # from DraftKings affiliate program
-RESEND_API_KEY=                              # for pick alert emails (optional)
-```
-
-For Streamlit Community Cloud, add these as secrets in the dashboard (not `.env`).
-
----
-
-## Deployment
-
-### Streamlit Community Cloud (free, recommended to start)
-
-1. Push to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Connect your repo, set main file to `app.py`
-4. Add secrets via the dashboard
-5. Deploy — auto-redeploys on every push to `main`
-
-### Railway (when you need always-on + scheduler)
-
-```
-Procfile:
-  web:    streamlit run app.py --server.port=$PORT --server.headless=true
-  worker: python -m jobs.scheduler
-```
-
-Add a Railway PostgreSQL plugin and set `DATABASE_URL` from the plugin's connection string.
-
----
-
-## Data Sources
-
-| Source | Cost | Used For |
-|--------|------|---------|
-| [dartsdatabase.co.uk](https://www.dartsdatabase.co.uk) | Free | Historical results (1994–present) |
-| [dartsdata.com](https://www.dartsdata.com) | Free (unofficial) | Live scores |
-| [the-odds-api.com](https://the-odds-api.com) | Free tier (500 req/mo) | DraftKings odds |
-
----
-
-## Models
-
-### Elo Rating (`models/elo.py`)
-Standard Elo with adjustments for tournament prestige, format length, and margin of victory. K-factor multiplied 1.5× for World Championship matches.
-
-### Match Predictor (`models/match_predictor.py`)
-Logistic regression (upgrades to XGBoost in V2) trained on head-to-head Elo difference, recent form metrics, and format-adjusted win rates. Backtest target: Brier score < 0.22, accuracy > 60%.
-
-### Props Model (`models/props_model.py`)
-Poisson distribution for 180s totals; normal distribution for checkout % markets.
-
----
-
-## Roadmap
-
-See [docs/06_roadmap_near_term.md](docs/06_roadmap_near_term.md) (Days 1–90) and [docs/07_roadmap_far_term.md](docs/07_roadmap_far_term.md) (Months 4–24).
-
-**MVP (first 90 days):**
-- [x] Historical data seed
-- [ ] Player profiles with Elo chart
-- [ ] Match center with model probability
-- [ ] Today's picks feed
-- [ ] 180s calculator
-- [ ] Odds tracker
-- [ ] Deploy to Streamlit Community Cloud
-
----
-
-## Legal
-
-- Model outputs are informational only. Not betting advice.
-- Must be 21+ and in a legal jurisdiction to wager.
-- This site participates in the DraftKings affiliate program.
-- Gambling problem? Call **1-800-522-4700** or visit [ncpgambling.org](https://www.ncpgambling.org).
-
-See [docs/09_legal_and_compliance.md](docs/09_legal_and_compliance.md) for full compliance checklist.
+Model output is informational and not financial advice.

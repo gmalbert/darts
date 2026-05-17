@@ -6,14 +6,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.styles import inject_css, get_theme, render_theme_picker
+from components.styles import inject_css, get_theme, chart_style, themed_dataframe
 from components.disclaimers import page_footer
 from db.queries import get_all_tournaments, get_tournament_results
 
 inject_css(get_theme())
-
-with st.sidebar:
-    render_theme_picker()
+chart = chart_style()
 
 st.markdown("## 🏆 Tournament Hub")
 st.caption("PDC events covered on DraftKings — formats, prize money, and results.")
@@ -62,7 +60,6 @@ with tab_grid:
 
     for i, t in enumerate(filtered_tourns):
         tier = t.get("prestige_tier", 2)
-        border_color = "#e10600" if tier == 1 else "#f0a500"
         dk_badge = "✅ DK" if t.get("dk_covered") else "❌"
         prize = t.get("prize_fund", 0)
         prize_str = f"£{prize:,}" if prize else "—"
@@ -73,17 +70,17 @@ with tab_grid:
                 tier_label = "🏅 MAJOR" if tier == 1 else "🎯 RANKING"
                 st.markdown(
                     f"**{t['name']}**  \n"
-                    f"<span style='color:#8b949e; font-size:0.8rem;'>{tier_label} · {t.get('typical_month', '—')}</span>",
+                    f"<span style='color:var(--biq-muted); font-size:0.8rem;'>{tier_label} · {t.get('typical_month', '—')}</span>",
                     unsafe_allow_html=True,
                 )
             with c2:
                 st.markdown(
-                    f"<span style='color:#8b949e; font-size:0.82rem;'>{t.get('format_desc', '—')}</span>",
+                    f"<span style='color:var(--biq-muted); font-size:0.82rem;'>{t.get('format_desc', '—')}</span>",
                     unsafe_allow_html=True,
                 )
             with c3:
                 st.markdown(
-                    f"<span style='color:#f0a500; font-weight:700;'>{prize_str}</span>",
+                    f"<span style='color:var(--biq-accent2); font-weight:700;'>{prize_str}</span>",
                     unsafe_allow_html=True,
                 )
             with c4:
@@ -100,17 +97,18 @@ with tab_grid:
         y=df_prize["name"],
         x=df_prize["prize_fund"],
         orientation="h",
-        marker_color=["#e10600" if t == 1 else "#f0a500" for t in df_prize["prestige_tier"]],
+        marker_color=[chart["accent"] if t == 1 else chart["accent2"] for t in df_prize["prestige_tier"]],
         text=df_prize["prize_fund"].apply(lambda x: f"£{x:,}"),
         textposition="outside",
     ))
     fig_prize.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#161b22",
+        template=chart["template"],
+        paper_bgcolor=chart["paper_bgcolor"],
+        plot_bgcolor=chart["plot_bgcolor"],
+        font=dict(color=chart["text"]),
         height=380,
         margin=dict(l=10, r=100, t=20, b=20),
-        xaxis=dict(showgrid=True, gridcolor="#21262d", title="Prize Fund (£)"),
+        xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Prize Fund (£)"),
         yaxis=dict(showgrid=False),
     )
     st.plotly_chart(fig_prize, use_container_width=True)
@@ -137,7 +135,7 @@ with tab_detail:
             st.info("No results logged for this tournament yet.")
         else:
             results_df["date"] = pd.to_datetime(results_df["date"]).dt.strftime("%b %d, %Y")
-            st.dataframe(
+            themed_dataframe(
                 results_df[["date", "round", "player1", "score", "player2", "winner"]].rename(columns={
                     "date": "Date", "round": "Round",
                     "player1": "Player 1", "score": "Score",
@@ -156,15 +154,16 @@ with tab_detail:
                 x=win_counts["wins"],
                 y=win_counts["player"],
                 orientation="h",
-                marker_color="#e10600",
+                marker_color=chart["accent"],
             ))
             fig_wins.update_layout(
-                template="plotly_dark",
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#161b22",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=300,
                 margin=dict(l=10, r=20, t=20, b=20),
-                xaxis=dict(showgrid=True, gridcolor="#21262d", title="Match Wins"),
+                xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Match Wins"),
                 yaxis=dict(showgrid=False, autorange="reversed"),
             )
             st.plotly_chart(fig_wins, use_container_width=True)

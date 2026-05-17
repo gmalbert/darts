@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.styles import inject_css, get_theme, render_theme_picker, nat_flag, format_american_odds
+from components.styles import inject_css, get_theme, chart_style, themed_dataframe, nat_flag, format_american_odds
 from components.disclaimers import page_footer
 from db.queries import (
     get_all_players,
@@ -17,10 +17,17 @@ from db.queries import (
     get_h2h,
 )
 
-inject_css(get_theme())
 
-with st.sidebar:
-    render_theme_picker()
+def _num(v, default: float = 0.0) -> float:
+    """Safe numeric conversion for DB values that may be None/empty."""
+    n = pd.to_numeric(v, errors="coerce")
+    if pd.isna(n):
+        return default
+    return float(n)
+
+
+inject_css(get_theme())
+chart = chart_style()
 
 # ── Page header ────────────────────────────────────────────────────────────────
 st.markdown("## 🎯 Player Profiles & Rankings")
@@ -45,9 +52,9 @@ with tab_rankings:
     df = pd.DataFrame(players)
     df["rank"] = range(1, len(df) + 1)
     df["flag"] = df["nationality"].apply(nat_flag)
-    df["win_rate_pct"] = (df["win_rate_last20"] * 100).round(1).astype(str) + "%"
-    df["checkout_pct_fmt"] = (df["checkout_pct"] * 100).round(1).astype(str) + "%"
-    df["elo_fmt"] = df["elo"].round(0).astype(int)
+    df["win_rate_pct"] = (pd.to_numeric(df["win_rate_last20"], errors="coerce") * 100).round(1).fillna(0).astype(str) + "%"
+    df["checkout_pct_fmt"] = (pd.to_numeric(df["checkout_pct"], errors="coerce") * 100).round(1).fillna(0).astype(str) + "%"
+    df["elo_fmt"] = pd.to_numeric(df["elo"], errors="coerce").fillna(1500).round(0).astype(int)
 
     # Elo bar chart — top 16
     top16 = df.head(16)
@@ -56,17 +63,18 @@ with tab_rankings:
         y=top16["name"][::-1],
         x=top16["elo_fmt"][::-1],
         orientation="h",
-        marker_color="#e10600",
+        marker_color=chart["accent"],
         text=top16["elo_fmt"][::-1],
         textposition="outside",
     ))
     fig_rank.update_layout(
-        template="plotly_dark",
-        paper_bgcolor="#0d1117",
-        plot_bgcolor="#161b22",
+        template=chart["template"],
+        paper_bgcolor=chart["paper_bgcolor"],
+        plot_bgcolor=chart["plot_bgcolor"],
+        font=dict(color=chart["text"]),
         height=520,
         margin=dict(l=10, r=60, t=20, b=10),
-        xaxis=dict(showgrid=True, gridcolor="#21262d", title="Elo Rating"),
+        xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Elo Rating"),
         yaxis=dict(showgrid=False),
     )
     st.plotly_chart(fig_rank, use_container_width=True)
@@ -84,7 +92,7 @@ with tab_rankings:
         "win_rate_pct": "Win Rate (L20)",
         "pdc_ranking": "PDC Rank",
     }
-    st.dataframe(
+    themed_dataframe(
         df[list(display_cols.keys())].rename(columns=display_cols),
         hide_index=True,
         use_container_width=True,
@@ -117,7 +125,7 @@ with tab_profile:
         st.markdown(
             f"<div style='text-align:center; font-size:4rem;'>{flag}</div>"
             f"<div style='text-align:center; font-size:1.5rem; font-weight:700;'>{player['name']}</div>"
-            f"<div style='text-align:center; color:#8b949e;'>\"{player.get('nickname', '')}\"</div>",
+            f"<div style='text-align:center; color:var(--biq-muted);'>\"{player.get('nickname', '')}\"</div>",
             unsafe_allow_html=True,
         )
     with col_meta:
@@ -127,11 +135,11 @@ with tab_profile:
         with mc2:
             st.metric("PDC Ranking", f"#{player.get('pdc_ranking', '—')}")
         with mc3:
-            avg = player.get("avg_3dart")
-            st.metric("3-Dart Avg", f"{avg:.2f}" if avg else "—")
+            avg = _num(player.get("avg_3dart"), default=float("nan"))
+            st.metric("3-Dart Avg", f"{avg:.2f}" if pd.notna(avg) else "—")
         with mc4:
-            co = player.get("checkout_pct")
-            st.metric("Checkout %", f"{co*100:.1f}%" if co else "—")
+            co = _num(player.get("checkout_pct"), default=float("nan"))
+            st.metric("Checkout %", f"{co*100:.1f}%" if pd.notna(co) else "—")
 
     st.divider()
 
@@ -143,24 +151,25 @@ with tab_profile:
             x=elo_hist["recorded_at"],
             y=elo_hist["elo"],
             mode="lines",
-            line=dict(color="#e10600", width=2),
+            line=dict(color=chart["accent"], width=2),
             fill="tozeroy",
-            fillcolor="rgba(225, 6, 0, 0.08)",
+            fillcolor="rgba(0, 0, 0, 0)",
             name="Elo",
         ))
         # 1500 reference line
         fig_elo.add_hline(
-            y=1500, line_dash="dot", line_color="#30363d",
+            y=1500, line_dash="dot", line_color=chart["grid"],
             annotation_text="Baseline 1500", annotation_position="bottom right",
         )
         fig_elo.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#0d1117",
-            plot_bgcolor="#161b22",
+            template=chart["template"],
+            paper_bgcolor=chart["paper_bgcolor"],
+            plot_bgcolor=chart["plot_bgcolor"],
+            font=dict(color=chart["text"]),
             height=300,
             margin=dict(l=10, r=10, t=10, b=30),
-            xaxis=dict(showgrid=True, gridcolor="#21262d"),
-            yaxis=dict(showgrid=True, gridcolor="#21262d", title="Elo"),
+            xaxis=dict(showgrid=True, gridcolor=chart["grid"]),
+            yaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Elo"),
             showlegend=False,
         )
         st.plotly_chart(fig_elo, use_container_width=True)
@@ -172,16 +181,16 @@ with tab_profile:
         st.markdown("#### Detailed Stats")
         sc1, sc2, sc3 = st.columns(3)
         with sc1:
-            st.metric("Win Rate (L20)", f"{round(stats.get('win_rate_last20', 0) * 100, 1)}%")
-            st.metric("PL Win Rate", f"{round(stats.get('win_rate_premier_league', 0) * 100, 1)}%")
+            st.metric("Win Rate (L20)", f"{round(_num(stats.get('win_rate_last20')) * 100, 1)}%")
+            st.metric("PL Win Rate", f"{round(_num(stats.get('win_rate_premier_league')) * 100, 1)}%")
         with sc2:
-            st.metric("3-Dart Avg (L10)", f"{stats.get('avg_3dart_last10', 0):.2f}")
-            st.metric("Checkout % (L10)", f"{round(stats.get('checkout_pct_last10', 0) * 100, 1)}%")
+            st.metric("3-Dart Avg (L10)", f"{_num(stats.get('avg_3dart_last10')):.2f}")
+            st.metric("Checkout % (L10)", f"{round(_num(stats.get('checkout_pct_last10')) * 100, 1)}%")
         with sc3:
-            st.metric("Avg 180s/Match (L10)", f"{stats.get('avg_180s_last10', 0):.2f}")
+            st.metric("Avg 180s/Match (L10)", f"{_num(stats.get('avg_180s_last10')):.2f}")
             streak = stats.get("form_streak", "—")
             streak_colored = "".join(
-                f"<span style='color:{'#3fb950' if c == 'W' else '#f85149'};'>{c}</span>"
+                f"<span style='color:{'var(--biq-pos)' if c == 'W' else 'var(--biq-neg)'};'>{c}</span>"
                 for c in streak
             )
             st.markdown(
@@ -198,10 +207,11 @@ with tab_profile:
         display = match_hist[["date", "opponent", "score", "result_colored", "avg", "checkout_pct", "180s"]].copy()
         display.columns = ["Date", "Opponent", "Score", "Result", "Avg", "Checkout%", "180s"]
         if "Avg" in display.columns:
-            display["Avg"] = display["Avg"].round(2)
+            display["Avg"] = pd.to_numeric(display["Avg"], errors="coerce").round(2)
         if "Checkout%" in display.columns:
-            display["Checkout%"] = (display["Checkout%"] * 100).round(1).astype(str) + "%"
-        st.dataframe(display, hide_index=True, use_container_width=True)
+            display["Checkout%"] = (pd.to_numeric(display["Checkout%"], errors="coerce") * 100).round(1)
+            display["Checkout%"] = display["Checkout%"].fillna(0).astype(str) + "%"
+        themed_dataframe(display, hide_index=True, use_container_width=True)
     else:
         st.info("No match history available.")
 
@@ -247,7 +257,7 @@ with tab_h2h:
                     )
                 with _:
                     st.markdown(
-                        f"<div style='text-align:center; color:#8b949e; font-size:0.75rem;'>{label}</div>",
+                        f"<div style='text-align:center; color:var(--biq-muted); font-size:0.75rem;'>{label}</div>",
                         unsafe_allow_html=True,
                     )
                 with s2:
@@ -303,10 +313,10 @@ with tab_h2h:
                     lambda wid: p1_sel if wid == p1_data["id"] else p2_sel
                 )
                 h2h_df["color"] = h2h_df["winner_name"].apply(
-                    lambda n: "#e10600" if n == p1_sel else "#58a6ff"
+                    lambda n: chart["accent"] if n == p1_sel else chart["accent2"]
                 )
 
-                st.dataframe(
+                themed_dataframe(
                     h2h_df[["date", "score", "winner_name", "avg_p1", "avg_p2"]].rename(columns={
                         "date": "Date", "score": "Score", "winner_name": "Winner",
                         "avg_p1": f"Avg {p1_sel}", "avg_p2": f"Avg {p2_sel}",

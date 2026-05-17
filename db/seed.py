@@ -525,18 +525,21 @@ DEFAULT_START = 250  # offset so initial 2015 Elos are lower, allowing trajector
 
 
 def ensure_seeded() -> None:
-    """Create DB tables and seed demo data if empty.
+    """Create DB tables and verify real seed presence.
 
     If ``data_files/db_is_real.flag`` exists the database was pre-seeded by
-    the GitHub Actions workflow with real PDC data — skip the demo seed.
+    the GitHub Actions workflow with real PDC data.
     Safe to call on every Streamlit startup.
     """
     from pathlib import Path
-    flag = Path(__file__).resolve().parent.parent / "data_files" / "db_is_real.flag"
+    data_dir = Path(__file__).resolve().parent.parent / "data_files"
+    flag = data_dir / "db_is_real.flag"
+    lock = data_dir / "db_seed_in_progress.flag"
+
     init_db()
 
-    if flag.exists():
-        # Real data committed by GH Action — nothing to do
+    if flag.exists() or lock.exists():
+        # Real data committed by GH Action, or a real seed is currently rebuilding the DB.
         return
 
     session = SessionLocal()
@@ -545,5 +548,8 @@ def ensure_seeded() -> None:
     finally:
         session.close()
 
-    if count == 0:
-        seed_all()
+    if count == 0 and not lock.exists():
+        raise RuntimeError(
+            "Database is empty and no real-data flag is present. "
+            "Run: python -m db.seed_real --start-year 2015"
+        )

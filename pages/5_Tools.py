@@ -10,7 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.styles import inject_css, get_theme, render_theme_picker, format_american_odds
+from components.styles import inject_css, get_theme, chart_style, themed_dataframe, format_american_odds
 from components.disclaimers import page_footer
 from db.queries import get_all_players, get_player_by_name, get_h2h
 from models.props_model import (
@@ -20,9 +20,7 @@ from models.props_model import (
 from models.elo import DartsElo
 
 inject_css(get_theme())
-
-with st.sidebar:
-    render_theme_picker()
+chart = chart_style()
 
 st.markdown("## 🔧 Analytics Tools")
 st.caption("Interactive calculators for edge, props, and format analysis.")
@@ -76,13 +74,13 @@ with tab_edge:
                     st.metric("DK Implied Prob", f"{round(edge_result['dk_implied']*100,1)}%")
                 with r2:
                     edge = edge_result["edge_pct"]
-                    edge_color = "#3fb950" if edge > 0 else "#f85149"
+                    edge_color = "var(--biq-pos)" if edge > 0 else "var(--biq-neg)"
                     st.markdown(
-                        f"<div style='text-align:center; padding:16px; background:#161b22; "
+                        f"<div style='text-align:center; padding:16px; background:var(--biq-bg2); "
                         f"border:1px solid {edge_color}; border-radius:8px;'>"
                         f"<div style='font-size:2.2rem; font-weight:700; color:{edge_color};'>"
                         f"{'+' if edge > 0 else ''}{edge:.2f}%</div>"
-                        f"<div style='color:#8b949e;'>EDGE</div>"
+                        f"<div style='color:var(--biq-muted);'>EDGE</div>"
                         f"<div style='font-size:1.2rem; color:{edge_color};'>{edge_result['grade']}</div>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -132,7 +130,7 @@ with tab_edge:
         if st.button("Calculate", key="manual_calc"):
             res = calculate_edge(manual_prob / 100, manual_odds)
             edge = res["edge_pct"]
-            clr = "#3fb950" if edge > 0 else "#f85149"
+            clr = "var(--biq-pos)" if edge > 0 else "var(--biq-neg)"
             st.markdown(
                 f"**Edge:** <span style='color:{clr}; font-weight:700;'>{edge:+.2f}%</span>  \n"
                 f"**EV:** ${res['expected_value']:+.2f} per $100  \n"
@@ -189,12 +187,12 @@ with tab_180s:
         rc1, rc2 = st.columns(2)
         with rc1:
             st.metric("Expected 180s", f"{expected:.2f}")
-            over_clr = "#3fb950" if edge_over["edge_pct"] > 0 else "#f85149"
+            over_clr = "var(--biq-pos)" if edge_over["edge_pct"] > 0 else "var(--biq-neg)"
             st.markdown(
-                f"<div style='background:#161b22; border:1px solid {over_clr}; "
+                f"<div style='background:var(--biq-bg2); border:1px solid {over_clr}; "
                 f"border-radius:8px; padding:12px; text-align:center; margin:4px 0;'>"
-                f"<div style='color:#8b949e; font-size:0.78rem;'>OVER {line_180:.1f}</div>"
-                f"<div style='font-size:1.5rem; font-weight:700; color:#e6edf3;'>"
+                f"<div style='color:var(--biq-muted); font-size:0.78rem;'>OVER {line_180:.1f}</div>"
+                f"<div style='font-size:1.5rem; font-weight:700; color:var(--biq-text);'>"
                 f"{round(prob_over*100,1)}%</div>"
                 f"<div style='color:{over_clr}; font-size:0.9rem; font-weight:700;'>"
                 f"Edge: {edge_over['edge_pct']:+.2f}% ({edge_over['grade']})</div>"
@@ -203,12 +201,12 @@ with tab_180s:
             )
         with rc2:
             st.metric("Model (Poisson μ)", f"λ={expected:.2f}")
-            under_clr = "#3fb950" if edge_under["edge_pct"] > 0 else "#f85149"
+            under_clr = "var(--biq-pos)" if edge_under["edge_pct"] > 0 else "var(--biq-neg)"
             st.markdown(
-                f"<div style='background:#161b22; border:1px solid {under_clr}; "
+                f"<div style='background:var(--biq-bg2); border:1px solid {under_clr}; "
                 f"border-radius:8px; padding:12px; text-align:center; margin:4px 0;'>"
-                f"<div style='color:#8b949e; font-size:0.78rem;'>UNDER {line_180:.1f}</div>"
-                f"<div style='font-size:1.5rem; font-weight:700; color:#e6edf3;'>"
+                f"<div style='color:var(--biq-muted); font-size:0.78rem;'>UNDER {line_180:.1f}</div>"
+                f"<div style='font-size:1.5rem; font-weight:700; color:var(--biq-text);'>"
                 f"{round(prob_under*100,1)}%</div>"
                 f"<div style='color:{under_clr}; font-size:0.9rem; font-weight:700;'>"
                 f"Edge: {edge_under['edge_pct']:+.2f}% ({edge_under['grade']})</div>"
@@ -222,7 +220,7 @@ with tab_180s:
             from scipy.stats import poisson
             k_vals = list(range(0, int(expected * 3) + 2))
             probs = [poisson.pmf(k, expected) for k in k_vals]
-            colors = ["#e10600" if k > line_180 else "#58a6ff" for k in k_vals]
+            colors = [chart["accent"] if k > line_180 else chart["accent2"] for k in k_vals]
 
             fig_poisson = go.Figure()
             fig_poisson.add_trace(go.Bar(
@@ -232,16 +230,17 @@ with tab_180s:
                 name="P(X=k)",
             ))
             fig_poisson.add_vline(
-                x=line_180, line_dash="dash", line_color="#f0a500",
+                x=line_180, line_dash="dash", line_color=chart["accent2"],
                 annotation_text=f"Line: {line_180}", annotation_position="top",
             )
             fig_poisson.update_layout(
                 title=f"Poisson Distribution — {sel_player_180} 180s",
                 xaxis_title="Number of 180s",
                 yaxis_title="Probability (%)",
-                template="plotly_dark",
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#161b22",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=280,
                 margin=dict(l=10, r=10, t=50, b=30),
                 showlegend=False,
@@ -294,7 +293,7 @@ with tab_format:
             y=df_fv["adjusted_prob"],
             name="Favourite Win %",
             mode="lines+markers",
-            line=dict(color="#e10600", width=2.5),
+            line=dict(color=chart["accent"], width=2.5),
             marker=dict(size=8),
         ))
         fig_fv.add_trace(go.Scatter(
@@ -302,26 +301,29 @@ with tab_format:
             y=df_fv["upset_rate"],
             name="Underdog Win %",
             mode="lines+markers",
-            line=dict(color="#58a6ff", width=2.5),
+            line=dict(color=chart["accent2"], width=2.5),
             marker=dict(size=8),
         ))
-        fig_fv.add_hline(y=50, line_dash="dot", line_color="#30363d")
+        fig_fv.add_hline(y=50, line_dash="dot", line_color=chart["grid"])
         fig_fv.update_layout(
             title=f"Format Impact (Base: {base_prob_fv:.0f}% favourite)",
             xaxis_title="Format",
             yaxis_title="Win Probability (%)",
-            template="plotly_dark",
-            paper_bgcolor="#0d1117",
-            plot_bgcolor="#161b22",
+            template=chart["template"],
+            paper_bgcolor=chart["paper_bgcolor"],
+            plot_bgcolor=chart["plot_bgcolor"],
+            font=dict(color=chart["text"]),
             height=320,
             margin=dict(l=10, r=10, t=50, b=50),
             legend=dict(orientation="h", y=-0.25),
+            xaxis=dict(gridcolor=chart["grid"]),
+            yaxis=dict(gridcolor=chart["grid"]),
         )
         st.plotly_chart(fig_fv, use_container_width=True)
 
     with col_fv2:
         st.markdown("#### Format Reference Table")
-        st.dataframe(
+        themed_dataframe(
             df_fv.rename(columns={
                 "format": "Format",
                 "adjusted_prob": "Fav Win %",
@@ -348,7 +350,7 @@ with tab_format:
             {"Tournament": "World Grand Prix (sets)", "Format": "Best of 5 sets (3-leg)"},
             {"Tournament": "PC Finals (Final)", "Format": "Best of 21 legs"},
         ])
-        st.dataframe(format_ref, hide_index=True, use_container_width=True)
+        themed_dataframe(format_ref, hide_index=True, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════════

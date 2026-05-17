@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.styles import inject_css, get_theme, render_theme_picker, format_american_odds
+from components.styles import inject_css, get_theme, chart_style, themed_dataframe, format_american_odds
 from components.disclaimers import page_footer, dk_cta
 from db.queries import (
     get_current_odds,
@@ -16,9 +16,7 @@ from db.queries import (
 )
 
 inject_css(get_theme())
-
-with st.sidebar:
-    render_theme_picker()
+chart = chart_style()
 
 st.markdown("## 📊 Odds Tracker")
 st.caption("Live DraftKings moneylines, line movement, and steam detection for PDC events.")
@@ -39,7 +37,13 @@ with tab_current:
     upcoming_df = get_upcoming_matches(days=7)
 
     if odds_df.empty:
-        st.info("No odds data available. Run the odds scraper to populate live lines.")
+        if upcoming_df.empty:
+            st.info("No upcoming fixtures found in the next 7 days.")
+        else:
+            st.info(
+                f"{len(upcoming_df)} upcoming fixture(s) found, but DraftKings moneylines are not posted yet."
+            )
+            st.caption("Odds will appear automatically when the sportsbook opens markets.")
     else:
         # Filter by tournament
         tourns = ["All"] + sorted(odds_df["tournament"].dropna().unique().tolist())
@@ -66,12 +70,12 @@ with tab_current:
                 hdr, upd_col = st.columns([5, 1])
                 with hdr:
                     st.markdown(
-                        f"<span style='font-size:0.82rem; color:#8b949e;'>{tourn} · {time_str}</span>",
+                        f"<span style='font-size:0.82rem; color:var(--biq-muted);'>{tourn} · {time_str}</span>",
                         unsafe_allow_html=True,
                     )
                 with upd_col:
                     st.markdown(
-                        f"<span style='font-size:0.75rem; color:#6e7681;'>Updated {upd_str}</span>",
+                        f"<span style='font-size:0.75rem; color:var(--biq-muted);'>Updated {upd_str}</span>",
                         unsafe_allow_html=True,
                     )
 
@@ -79,11 +83,11 @@ with tab_current:
                 with c_p1:
                     o1 = format_american_odds(int(p1_odds)) if pd.notna(p1_odds) else "—"
                     impl1 = round(p1_impl * 100, 1) if pd.notna(p1_impl) else 0
-                    clr = "#3fb950" if pd.notna(p1_odds) and int(p1_odds) > 0 else "#f85149"
+                    clr = "var(--biq-pos)" if pd.notna(p1_odds) and int(p1_odds) > 0 else "var(--biq-neg)"
                     st.markdown(
                         f"**{p1}**  \n"
                         f"<span style='color:{clr}; font-size:1.3rem; font-weight:700;'>{o1}</span>  "
-                        f"<span style='color:#8b949e; font-size:0.8rem;'>({impl1}% implied)</span>",
+                        f"<span style='color:var(--biq-muted); font-size:0.8rem;'>({impl1}% implied)</span>",
                         unsafe_allow_html=True,
                     )
                 with c_odds:
@@ -93,10 +97,10 @@ with tab_current:
                         p1_pct = p1_impl / total_impl * 100 if total_impl > 0 else 50
                         bar_html = (
                             f"<div style='display:flex; height:8px; border-radius:4px; overflow:hidden; margin:20px 0;'>"
-                            f"<div style='width:{p1_pct:.0f}%; background:#e10600;'></div>"
-                            f"<div style='width:{100-p1_pct:.0f}%; background:#58a6ff;'></div>"
+                            f"<div style='width:{p1_pct:.0f}%; background:var(--biq-accent);'></div>"
+                            f"<div style='width:{100-p1_pct:.0f}%; background:var(--biq-accent2);'></div>"
                             f"</div>"
-                            f"<div style='display:flex; justify-content:space-between; font-size:0.75rem; color:#8b949e;'>"
+                            f"<div style='display:flex; justify-content:space-between; font-size:0.75rem; color:var(--biq-muted);'>"
                             f"<span>{p1_pct:.0f}%</span><span>{100-p1_pct:.0f}%</span>"
                             f"</div>"
                         )
@@ -104,11 +108,11 @@ with tab_current:
                 with c_p2:
                     o2 = format_american_odds(int(p2_odds)) if pd.notna(p2_odds) else "—"
                     impl2 = round(p2_impl * 100, 1) if pd.notna(p2_impl) else 0
-                    clr = "#3fb950" if pd.notna(p2_odds) and int(p2_odds) > 0 else "#f85149"
+                    clr = "var(--biq-pos)" if pd.notna(p2_odds) and int(p2_odds) > 0 else "var(--biq-neg)"
                     st.markdown(
                         f"**{p2}**  \n"
                         f"<span style='color:{clr}; font-size:1.3rem; font-weight:700;'>{o2}</span>  "
-                        f"<span style='color:#8b949e; font-size:0.8rem;'>({impl2}% implied)</span>",
+                        f"<span style='color:var(--biq-muted); font-size:0.8rem;'>({impl2}% implied)</span>",
                         unsafe_allow_html=True,
                     )
 
@@ -151,37 +155,38 @@ with tab_movement:
                 y=odds_hist["p1_implied"] * 100,
                 name=p1,
                 mode="lines+markers",
-                line=dict(color="#e10600", width=2.5),
+                line=dict(color=chart["accent"], width=2.5),
                 marker=dict(size=7, symbol="circle"),
                 fill="tozeroy",
-                fillcolor="rgba(225,6,0,0.07)",
+                fillcolor="rgba(0,0,0,0)",
             ))
             fig.add_trace(go.Scatter(
                 x=odds_hist["time"],
                 y=odds_hist["p2_implied"] * 100,
                 name=p2,
                 mode="lines+markers",
-                line=dict(color="#58a6ff", width=2.5),
+                line=dict(color=chart["accent2"], width=2.5),
                 marker=dict(size=7, symbol="circle"),
                 fill="tozeroy",
-                fillcolor="rgba(88,166,255,0.07)",
+                fillcolor="rgba(0,0,0,0)",
             ))
             fig.add_hline(
-                y=50, line_dash="dash", line_color="#30363d",
+                y=50, line_dash="dash", line_color=chart["grid"],
                 annotation_text="50%", annotation_position="right",
             )
             fig.update_layout(
                 title=f"Implied Probability: {p1} vs {p2}",
                 xaxis_title="Snapshot Time",
                 yaxis_title="Implied Probability (%)",
-                template="plotly_dark",
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#161b22",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=400,
                 margin=dict(l=10, r=10, t=50, b=50),
                 legend=dict(orientation="h", y=-0.2),
-                yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor="#21262d"),
-                xaxis=dict(gridcolor="#21262d"),
+                yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=chart["grid"]),
+                xaxis=dict(gridcolor=chart["grid"]),
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -192,7 +197,7 @@ with tab_movement:
                 y=odds_hist["p1_odds"],
                 name=f"{p1} (ML)",
                 mode="lines+markers",
-                line=dict(color="#e10600", width=2),
+                line=dict(color=chart["accent"], width=2),
                 marker=dict(size=6),
             ))
             fig2.add_trace(go.Scatter(
@@ -200,22 +205,23 @@ with tab_movement:
                 y=odds_hist["p2_odds"],
                 name=f"{p2} (ML)",
                 mode="lines+markers",
-                line=dict(color="#58a6ff", width=2),
+                line=dict(color=chart["accent2"], width=2),
                 marker=dict(size=6),
             ))
-            fig2.add_hline(y=0, line_dash="dot", line_color="#30363d")
+            fig2.add_hline(y=0, line_dash="dot", line_color=chart["grid"])
             fig2.update_layout(
                 title="American Moneyline Movement",
                 xaxis_title="Snapshot Time",
                 yaxis_title="American Odds",
-                template="plotly_dark",
-                paper_bgcolor="#0d1117",
-                plot_bgcolor="#161b22",
+                template=chart["template"],
+                paper_bgcolor=chart["paper_bgcolor"],
+                plot_bgcolor=chart["plot_bgcolor"],
+                font=dict(color=chart["text"]),
                 height=300,
                 margin=dict(l=10, r=10, t=50, b=50),
                 legend=dict(orientation="h", y=-0.25),
-                yaxis=dict(gridcolor="#21262d"),
-                xaxis=dict(gridcolor="#21262d"),
+                yaxis=dict(gridcolor=chart["grid"]),
+                xaxis=dict(gridcolor=chart["grid"]),
             )
             st.plotly_chart(fig2, use_container_width=True)
 
@@ -246,7 +252,7 @@ with tab_movement:
                     f"{round((latest['p2_implied'] - opening['p2_implied'])*100, 2):+.2f}",
                 ],
             }
-            st.dataframe(pd.DataFrame(mv_data), hide_index=True, use_container_width=True)
+            themed_dataframe(pd.DataFrame(mv_data), hide_index=True, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -285,7 +291,7 @@ with tab_steam:
                 with c1:
                     st.markdown(
                         f"**{p1} vs {p2}**  \n"
-                        f"<span style='color:#8b949e; font-size:0.82rem;'>{tourn}</span>",
+                        f"<span style='color:var(--biq-muted); font-size:0.82rem;'>{tourn}</span>",
                         unsafe_allow_html=True,
                     )
                 with c2:
@@ -294,20 +300,20 @@ with tab_steam:
                         unsafe_allow_html=True,
                     )
                     st.markdown(
-                        f"<span style='color:#8b949e; font-size:0.8rem;'>"
+                        f"<span style='color:var(--biq-muted); font-size:0.8rem;'>"
                         f"Shift: {'+' if shift > 0 else ''}{shift:.1f}pp</span>",
                         unsafe_allow_html=True,
                     )
                 with c3:
                     st.markdown(
-                        f"<span style='color:#8b949e; font-size:0.82rem;'>Open → Current</span><br>"
+                        f"<span style='color:var(--biq-muted); font-size:0.82rem;'>Open → Current</span><br>"
                         f"<span style='font-weight:700;'>{open_o} → {curr_o}</span>",
                         unsafe_allow_html=True,
                     )
                 with c4:
                     st.markdown(
                         f"{intensity}<br>"
-                        f"<span style='color:#6e7681; font-size:0.8rem;'>{dt_str}</span>",
+                        f"<span style='color:var(--biq-muted); font-size:0.8rem;'>{dt_str}</span>",
                         unsafe_allow_html=True,
                     )
 
