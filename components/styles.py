@@ -13,7 +13,7 @@ Themes are applied via CSS custom properties injected into the page.
 from __future__ import annotations
 from datetime import datetime
 import streamlit as st
-import streamlit.components.v1 as components
+
 
 # ── Theme definitions ──────────────────────────────────────────────────────────
 # Each theme: bg, bg2 (card), bg3 (hover/input), text, muted, border, accent,
@@ -495,7 +495,7 @@ def _sync_browser_time_mode() -> None:
     Sync `biq_mode` query param from browser-local time.
     Day = 07:00-18:59 -> Sky Glass, Night = 19:00-06:59 -> Petrol.
     """
-    components.html(
+    st.iframe(
         """
         <script>
         (function () {
@@ -511,7 +511,7 @@ def _sync_browser_time_mode() -> None:
         })();
         </script>
         """,
-        height=0,
+        height=1,
     )
 
 
