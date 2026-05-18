@@ -245,7 +245,7 @@ with tab_180s:
                 margin=dict(l=10, r=10, t=50, b=30),
                 showlegend=False,
             )
-            st.plotly_chart(fig_poisson, use_container_width=True)
+            st.plotly_chart(fig_poisson, width="stretch")
         except ImportError:
             st.info("Install scipy for the probability chart.")
 
@@ -319,7 +319,7 @@ with tab_format:
             xaxis=dict(gridcolor=chart["grid"]),
             yaxis=dict(gridcolor=chart["grid"]),
         )
-        st.plotly_chart(fig_fv, use_container_width=True)
+        st.plotly_chart(fig_fv, width="stretch")
 
     with col_fv2:
         st.markdown("#### Format Reference Table")
@@ -330,7 +330,7 @@ with tab_format:
                 "upset_rate": "Underdog %",
             })[["Format", "Fav Win %", "Underdog %"]],
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown("")
@@ -350,7 +350,7 @@ with tab_format:
             {"Tournament": "World Grand Prix (sets)", "Format": "Best of 5 sets (3-leg)"},
             {"Tournament": "PC Finals (Final)", "Format": "Best of 21 legs"},
         ])
-        themed_dataframe(format_ref, hide_index=True, use_container_width=True)
+        themed_dataframe(format_ref, hide_index=True, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════════

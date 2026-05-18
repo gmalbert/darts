@@ -77,7 +77,7 @@ with tab_rankings:
         xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Elo Rating"),
         yaxis=dict(showgrid=False),
     )
-    st.plotly_chart(fig_rank, use_container_width=True)
+    st.plotly_chart(fig_rank, width="stretch")
 
     # Full rankings table
     st.markdown("#### Full Rankings Table")
@@ -95,7 +95,7 @@ with tab_rankings:
     themed_dataframe(
         df[list(display_cols.keys())].rename(columns=display_cols),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         height=500,
     )
 
@@ -172,7 +172,7 @@ with tab_profile:
             yaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Elo"),
             showlegend=False,
         )
-        st.plotly_chart(fig_elo, use_container_width=True)
+        st.plotly_chart(fig_elo, width="stretch")
     else:
         st.info("No Elo history available for this player.")
 
@@ -211,7 +211,7 @@ with tab_profile:
         if "Checkout%" in display.columns:
             display["Checkout%"] = (pd.to_numeric(display["Checkout%"], errors="coerce") * 100).round(1)
             display["Checkout%"] = display["Checkout%"].fillna(0).astype(str) + "%"
-        themed_dataframe(display, hide_index=True, use_container_width=True)
+        themed_dataframe(display, hide_index=True, width="stretch")
     else:
         st.info("No match history available.")
 
@@ -322,7 +322,7 @@ with tab_h2h:
                         "avg_p1": f"Avg {p1_sel}", "avg_p2": f"Avg {p2_sel}",
                     }),
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 page_footer()

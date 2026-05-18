@@ -155,7 +155,7 @@ with tab_results:
                 "winner": "Winner",
             }),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             height=550,
         )
 
@@ -231,7 +231,7 @@ with tab_detail:
                 yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=chart["grid"]),
                 xaxis=dict(gridcolor=chart["grid"]),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # ── Current odds detail ───────────────────────────────────────────
             latest = odds_hist.iloc[-1]
@@ -286,7 +286,7 @@ with tab_detail:
                 themed_dataframe(
                     h2h_df[["date", "score", "winner_id"]].head(10),
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
 
 page_footer()

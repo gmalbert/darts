@@ -188,7 +188,7 @@ with tab_movement:
                 yaxis=dict(range=[0, 100], ticksuffix="%", gridcolor=chart["grid"]),
                 xaxis=dict(gridcolor=chart["grid"]),
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             # American odds movement
             fig2 = go.Figure()
@@ -223,7 +223,7 @@ with tab_movement:
                 yaxis=dict(gridcolor=chart["grid"]),
                 xaxis=dict(gridcolor=chart["grid"]),
             )
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
 
             # Movement summary table
             st.markdown("#### Movement Summary")
@@ -252,7 +252,7 @@ with tab_movement:
                     f"{round((latest['p2_implied'] - opening['p2_implied'])*100, 2):+.2f}",
                 ],
             }
-            themed_dataframe(pd.DataFrame(mv_data), hide_index=True, use_container_width=True)
+            themed_dataframe(pd.DataFrame(mv_data), hide_index=True, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════════

@@ -111,7 +111,7 @@ with tab_grid:
         xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Prize Fund (£)"),
         yaxis=dict(showgrid=False),
     )
-    st.plotly_chart(fig_prize, use_container_width=True)
+    st.plotly_chart(fig_prize, width="stretch")
 
 
 with tab_detail:
@@ -142,7 +142,7 @@ with tab_detail:
                     "player2": "Player 2", "winner": "Winner",
                 }),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 height=500,
             )
 
@@ -166,6 +166,6 @@ with tab_detail:
                 xaxis=dict(showgrid=True, gridcolor=chart["grid"], title="Match Wins"),
                 yaxis=dict(showgrid=False, autorange="reversed"),
             )
-            st.plotly_chart(fig_wins, use_container_width=True)
+            st.plotly_chart(fig_wins, width="stretch")
 
 page_footer()

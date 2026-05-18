@@ -764,7 +764,7 @@ def themed_dataframe(
     df,
     *,
     hide_index: bool = True,
-    use_container_width: bool = True,
+    width: str = "stretch",
     height: int | None = None,
 ) -> None:
     """Render a dataframe with explicit theme-consistent cell colors."""
@@ -772,14 +772,15 @@ def themed_dataframe(
     data = df.data if hasattr(df, "data") else df
     table_html = data.to_html(index=not hide_index, escape=False, border=0)
 
-    width_style = "width: 100%;" if use_container_width else ""
+    wrap_width_style = "width: 100%;" if width == "stretch" else "width: fit-content;"
+    table_width_style = "width: 100%;" if width == "stretch" else "width: auto;"
     height_style = f"max-height: {height}px;" if height is not None else ""
 
     st.markdown(
         f"""
 <style>
 .biq-table-wrap {{
-    {width_style}
+    {wrap_width_style}
     {height_style}
     overflow: auto;
     border: 1px solid {t['border']};
@@ -788,7 +789,7 @@ def themed_dataframe(
 }}
 .biq-table-wrap table {{
     border-collapse: collapse;
-    width: 100%;
+    {table_width_style}
     color: {t['text']};
     background: {t['bg2']};
     font-size: 0.95rem;

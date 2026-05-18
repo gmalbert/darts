@@ -29,6 +29,7 @@
 - Use `themed_dataframe(...)` from `components/styles.py` for tabular data.
 - For charts, use `chart_style(...)` tokens instead of hard-coded dark colors.
 - Use explicit fallbacks for nullable fields (`round`, odds, averages) to avoid showing `None`.
+- Streamlit width convention: do not use `use_container_width`; use `width="stretch"` or `width="content"`.
 
 ## Data Safety and Robustness
 - Guard all numeric formatting against `None`/NaN.

@@ -63,7 +63,7 @@ def render_match_center(match_id: int):
     if h2h:
         import pandas as pd
         df = pd.DataFrame(h2h)[["year", "tournament", "round", "score1", "score2", "winner"]]
-        st.dataframe(df, hide_index=True, use_container_width=True)
+        st.dataframe(df, hide_index=True, width="stretch")
 
     # Odds movement chart
     if odds_hist:
@@ -125,12 +125,12 @@ def render_player_profile(slug: str):
                   title="Elo Rating History", template="plotly_dark",
                   color_discrete_sequence=["#f0a500"])
     fig.update_layout(xaxis_title="", yaxis_title="Elo")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Recent matches table
     st.subheader("Last 20 Matches")
     df_m = pd.DataFrame(recent)[["match_date", "tournament", "round", "opponent", "score", "result"]]
-    st.dataframe(df_m, hide_index=True, use_container_width=True)
+    st.dataframe(df_m, hide_index=True, width="stretch")
 ```
 
 ---
@@ -206,7 +206,7 @@ def render_odds_chart(snapshots: list[dict], p1_name: str, p2_name: str):
         yaxis_title="Implied Win %",
         yaxis=dict(range=[0, 100]),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
     st.caption(f"Opening: {opening:.1f}% → Current: {current:.1f}% ({shift:+.1f}pp)")
 ```
 
@@ -281,7 +281,7 @@ with col2:
     if schedule:
         df = pd.DataFrame(schedule)
         st.dataframe(df[["match_date", "round", "player1", "player2", "score1", "score2"]],
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
     else:
         st.info("No upcoming matches found for this tournament.")
 ```

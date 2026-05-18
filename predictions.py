@@ -317,7 +317,7 @@ def home_page() -> None:
                     str(record30['brier_score']),
                 ],
             }
-            themed_dataframe(pd.DataFrame(perf_data), hide_index=True, use_container_width=True)
+            themed_dataframe(pd.DataFrame(perf_data), hide_index=True, width="stretch")
             st.info(
                 "**Brier Score**: Calibration metric (0 = perfect, 1 = worst). "
                 "Industry benchmark for well-calibrated models ≈ 0.22."
@@ -340,7 +340,7 @@ def home_page() -> None:
                     height=260,
                     margin=dict(l=10, r=10, t=40, b=30),
                 )
-                st.plotly_chart(fig_h, use_container_width=True)
+                st.plotly_chart(fig_h, width="stretch")
 
     # ── TAB 5: HISTORICAL ────────────────────────────────────────────────────
     with tab_history:
@@ -409,7 +409,7 @@ def _render_history_tab() -> None:
             xaxis=dict(gridcolor=chart["grid"]),
             yaxis=dict(gridcolor=chart["grid"]),
         )
-        st.plotly_chart(fig_elo, use_container_width=True)
+        st.plotly_chart(fig_elo, width="stretch")
     else:
         st.info("Select at least one player above to display Elo trajectories.")
 
@@ -462,7 +462,7 @@ def _render_history_tab() -> None:
                 xaxis=dict(gridcolor=chart["grid"]),
                 yaxis=dict(gridcolor=chart["grid"]),
             )
-            st.plotly_chart(fig_yr, use_container_width=True)
+            st.plotly_chart(fig_yr, width="stretch")
 
         with col_table:
             display_cols = ["year", "total_matches"]
@@ -475,7 +475,7 @@ def _render_history_tab() -> None:
                     "avg_elo_spread": "Avg Elo Δ",
                 }),
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
             )
     else:
         st.info("Seed the database to see historical breakdown.")
@@ -514,7 +514,7 @@ def _render_history_tab() -> None:
             xaxis=dict(gridcolor=chart["grid"]),
             yaxis=dict(gridcolor=chart["grid"]),
         )
-        st.plotly_chart(fig_era, use_container_width=True)
+        st.plotly_chart(fig_era, width="stretch")
     else:
         st.info("No era data available yet.")
 
