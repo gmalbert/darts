@@ -172,24 +172,21 @@ def home_page() -> None:
     inject_css(get_theme())
     chart = chart_style()
 
-    # Sidebar — logo only
-    with st.sidebar:
-        if LOGO_PATH.exists():
-            st.image(str(LOGO_PATH), width=180)
-
-    # Header — no logo, just title + tagline
-    st.markdown(
-        "<h1 style='font-size:2.2rem; font-weight:800; margin-bottom:2px;'>"
-        "🎯 BullzIQ</h1>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<p style='color:var(--biq-muted); font-size:0.95rem; margin-top:0;'>"
-        "Model-driven picks &nbsp;·&nbsp; Elo ratings &nbsp;·&nbsp; "
-        "Live odds &nbsp;·&nbsp; PDC darts on DraftKings"
-        "</p>",
-        unsafe_allow_html=True,
-    )
+    # Header — logo in main content area + title + tagline
+    if LOGO_PATH.exists():
+        st.image(str(LOGO_PATH), width=200)
+    # st.markdown(
+    #     "<h1 style='font-size:2.2rem; font-weight:800; margin-bottom:2px;'>"
+    #     "🎯 BullzIQ</h1>",
+    #     unsafe_allow_html=True,
+    # )
+    # st.markdown(
+    #     "<p style='color:var(--biq-muted); font-size:0.95rem; margin-top:0;'>"
+    #     "Model-driven picks &nbsp;·&nbsp; Elo ratings &nbsp;·&nbsp; "
+    #     "Live odds &nbsp;·&nbsp; PDC darts on DraftKings"
+    #     "</p>",
+    #     unsafe_allow_html=True,
+    # )
     st.divider()
 
     # Top metrics row

@@ -11,6 +11,10 @@ from components.disclaimers import page_footer
 from db.queries import get_all_tournaments, get_tournament_results
 
 inject_css(get_theme())
+from pathlib import Path as _Path
+_LOGO = _Path("data_files/logo.png")
+if _LOGO.exists():
+    st.sidebar.image(str(_LOGO), width=180)
 chart = chart_style()
 
 st.markdown("## 🏆 Tournament Hub")

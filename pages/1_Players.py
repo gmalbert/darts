@@ -29,6 +29,11 @@ def _num(v, default: float = 0.0) -> float:
 inject_css(get_theme())
 chart = chart_style()
 
+from pathlib import Path as _Path
+_LOGO = _Path("data_files/logo.png")
+if _LOGO.exists():
+    st.sidebar.image(str(_LOGO), width=180)
+
 # ── Page header ────────────────────────────────────────────────────────────────
 st.markdown("## 🎯 Player Profiles & Rankings")
 st.caption("PDC player Elo ratings, career stats, form, and head-to-head records.")
