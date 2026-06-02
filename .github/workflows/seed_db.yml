@@ -77,3 +77,20 @@ jobs:
             && echo "No changes to commit" \
             || git commit -m "chore(db): refresh seeded database [skip ci]"
           git push
+
+      - name: Export best bets for Sports Picks Grid
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python scripts/export_best_bets.py
+        continue-on-error: true
+
+      - name: Commit best_bets_today.json
+        run: |
+          git add data_files/best_bets_today.json || true
+          if git diff --staged --quiet; then
+            echo "No best_bets changes to commit."
+          else
+            git commit -m "chore: update best_bets_today [skip ci]"
+            git push
+          fi
+        continue-on-error: true

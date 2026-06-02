@@ -80,3 +80,5 @@ data_files/*.json
 
 # Static generated files
 static/sitemap.xml
+
+*code-workspace

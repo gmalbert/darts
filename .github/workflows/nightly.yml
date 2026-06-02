@@ -1,0 +1,49 @@
+name: Darts Nightly Best Bets Export
+
+on:
+  schedule:
+    # 07:00 UTC — after European morning odds settle
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh odds snapshot
+        env:
+          ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
+        run: python scrapers/odds_api.py || echo "[warn] Odds refresh failed — continuing"
+
+      - name: Export best bets for Sports Picks Grid
+        run: python scripts/export_best_bets.py
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+      - name: Commit best_bets_today.json
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data_files/best_bets_today.json || true
+          git diff --staged --quiet || git commit -m "chore: update darts best_bets_today [skip ci]"
+          git push
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
