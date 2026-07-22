@@ -8,6 +8,7 @@ odds snapshot, and writes data_files/best_bets_today.json.
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -138,12 +139,15 @@ def get_bets(session) -> list[dict]:
 
 
 def main() -> None:
+    status = "ok"
     if not DB_AVAILABLE:
         print("[darts export] DB not available — writing empty output")
         bets: list[dict] = []
+        status = "pipeline_failed"
     else:
         with SessionLocal() as session:
             bets = get_bets(session)
+        status = "ok" if bets else "no_picks"
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -152,12 +156,17 @@ def main() -> None:
             "generated_at":  datetime.now(timezone.utc).isoformat(),
             "model_version": "1.0.0",
             "season":        str(datetime.now(timezone.utc).year),
+            "status":        status,
+            "tier_definition": "edge-v1",
+            "lookahead_days": LOOKAHEAD_DAYS,
+            "source_commit": os.getenv("GITHUB_SHA", ""),
+            "total_bets":    len(bets),
         },
         "bets": bets,
     }
     with open(OUT_PATH, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
-    print(f"[darts export] Wrote {len(bets)} bets → {OUT_PATH}")
+    print(f"[darts export] Wrote {len(bets)} bets -> {OUT_PATH}")
 
 
 if __name__ == "__main__":
