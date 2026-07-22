@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "sport": "Darts",
+    "generated_at": "2026-07-22T20:41:31.122998+00:00",
+    "model_version": "1.0.0",
+    "season": "2026"
+  },
+  "bets": [
+    {
+      "game_date": "2026-07-22",
+      "game": "Gian van Veen vs Wessel Nijman",
+      "game_time": "19:15",
+      "bet_type": "moneyline",
+      "pick": "Gian van Veen",
+      "confidence": 0.7926,
+      "edge": 0.3926,
+      "odds": 150,
+      "tier": "Elite",
+      "notes": "World Matchplay"
+    },
+    {
+      "game_date": "2026-07-22",
+      "game": "James Wade vs Ryan Searle",
+      "game_time": "21:15",
+      "bet_type": "moneyline",
+      "pick": "James Wade",
+      "confidence": 0.6138,
+      "edge": 0.0582,
+      "odds": -125,
+      "tier": "Strong",
+      "notes": "World Matchplay"
+    }
+  ]
+}
