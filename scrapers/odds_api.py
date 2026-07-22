@@ -1,10 +1,10 @@
 """
-scrapers/odds_api.py — odds-api.io integration for DraftKings darts lines.
+scrapers/odds_api.py — odds-api.io integration for DraftKings/Bet365 darts lines.
 
 Docs: https://docs.odds-api.io/
 Base URL: https://api.odds-api.io/v3
 Sport slug: darts
-Free tier: 100 req/hour, bookmakers locked to 2 at signup (DraftKings + BetMGM BR).
+Free tier: 100 req/hour, bookmakers selected in the account (DraftKings + Bet365).
 
 Usage:
     from scrapers.odds_api import fetch_darts_odds, upsert_odds_snapshot
@@ -27,9 +27,15 @@ ODDS_API_IO_KEY = os.getenv("ODDS_API_IO_KEY", "")
 BASE_URL = "https://api.odds-api.io/v3"
 SPORT = "darts"
 
-# Bookmakers available on the free plan (locked at account creation).
+# Bookmakers selected for this account.
 # The ML market returns decimal odds; we convert to American integers.
-BOOKMAKERS = ["DraftKings", "BetMGM BR"]
+BOOKMAKERS = ["DraftKings", "Bet365"]
+ODDS_BATCH_SIZE = 10  # odds-api.io /odds/multi limit
+REQUEST_BUDGET_PER_HOUR = int(os.getenv("ODDS_API_IO_REQUEST_BUDGET", "20"))
+# Bet365 is the selected book with current darts coverage; keep this override
+# configurable if the account’s selected books change again.
+EVENT_BOOKMAKER_FILTER = os.getenv("ODDS_API_IO_EVENT_BOOKMAKER", BOOKMAKERS[1])
+_request_times: list[float] = []
 
 # Placeholder names used by odds-api.io before draw brackets are set.
 _PLACEHOLDER_PREFIXES = (
@@ -76,8 +82,18 @@ def _decimal_to_implied(decimal_odds: float) -> float:
 
 def _get(path: str, params: dict) -> requests.Response | None:
     """GET helper; returns None on network error."""
+    now = time.monotonic()
+    _request_times[:] = [t for t in _request_times if now - t < 3600]
+    if len(_request_times) >= REQUEST_BUDGET_PER_HOUR:
+        print(
+            f"odds-api.io request budget reached ({REQUEST_BUDGET_PER_HOUR}/hour); "
+            f"skipping /{path}."
+        )
+        return None
+
     params = {"apiKey": ODDS_API_IO_KEY, **params}
     try:
+        _request_times.append(now)
         resp = requests.get(f"{BASE_URL}/{path}", params=params, timeout=15)
         return resp
     except requests.RequestException as exc:
@@ -100,9 +116,25 @@ def _fetch_all_darts_events() -> list[dict]:
     skip = 0
     limit = 50
     while True:
-        resp = _get("events", {"sport": SPORT, "status": "pending,live",
-                                "limit": limit, "skip": skip})
-        if resp is None or resp.status_code != 200:
+        event_params = {
+            "sport": SPORT,
+            "status": "pending,live",
+            "limit": limit,
+            "skip": skip,
+        }
+        # Ask the API to return only events that have odds at the target book.
+        # This avoids fetching every darts event when DraftKings has no market.
+        if EVENT_BOOKMAKER_FILTER:
+            event_params["bookmaker"] = EVENT_BOOKMAKER_FILTER
+        resp = _get("events", event_params)
+        if resp is None:
+            print("odds-api.io events request failed before receiving a response.")
+            break
+        if resp.status_code != 200:
+            print(
+                f"odds-api.io events request returned HTTP {resp.status_code}: "
+                f"{resp.text[:240]}"
+            )
             break
         page = resp.json()
         if not isinstance(page, list) or not page:
@@ -186,80 +218,87 @@ def fetch_darts_odds(
 
     results: list[dict] = []
     requests_used = 0
+    status_counts: dict[str, int] = {}
+    empty_bookmakers = 0
+    missing_ml = 0
 
-    for event in candidate_events:
-        eid = event["id"]
-        home = event.get("home", "")
-        away = event.get("away", "")
-        commence = event.get("date", "")
-
-        resp = _get("odds", {"eventId": eid,
-                             "bookmakers": ",".join(BOOKMAKERS)})
-        requests_used += 1
-        if resp is None or resp.status_code != 200:
-            continue
-
-        data = resp.json()
-        bookmakers_data = data.get("bookmakers", {})
-        if not bookmakers_data:
-            continue
-
-        # Try each preferred bookmaker in order
-        ml_home: float | None = None
-        ml_away: float | None = None
-        book_used: str = ""
-
-        for bk_name in BOOKMAKERS:
-            markets = bookmakers_data.get(bk_name)
-            if not markets:
-                continue
-            ml_market = next((m for m in markets if m.get("name") == "ML"), None)
-            if not ml_market:
-                continue
-            odds_list = ml_market.get("odds", [])
-            if not odds_list:
-                continue
-            o = odds_list[0]
-            home_dec = o.get("home")
-            away_dec = o.get("away")
-            if home_dec is None or away_dec is None:
-                continue
-            try:
-                ml_home = float(home_dec)
-                ml_away = float(away_dec)
-                book_used = bk_name
-                break
-            except (ValueError, TypeError):
-                continue
-
-        if ml_home is None or ml_away is None:
-            continue
-
-        p1_american = _decimal_to_american(ml_home)
-        p2_american = _decimal_to_american(ml_away)
-
-        results.append({
-            "event_id": str(eid),
-            "player1": home,
-            "player2": away,
-            "commence_time": commence,
-            "p1_odds": p1_american,
-            "p2_odds": p2_american,
-            "p1_implied": _decimal_to_implied(ml_home),
-            "p2_implied": _decimal_to_implied(ml_away),
-            "book": book_used,
-            "fetched_at": _utc_now_iso(),
+    # Batch requests reduce a 50-event refresh from 50 calls to at most 5,
+    # which matters on free/rate-limited accounts.
+    for offset in range(0, len(candidate_events), ODDS_BATCH_SIZE):
+        batch = candidate_events[offset:offset + ODDS_BATCH_SIZE]
+        event_ids = ",".join(str(event["id"]) for event in batch)
+        resp = _get("odds/multi", {
+            "eventIds": event_ids,
+            "bookmakers": ",".join(BOOKMAKERS),
         })
+        requests_used += 1
+        if resp is None:
+            status_counts["network_error"] = status_counts.get("network_error", 0) + 1
+            continue
+        if resp.status_code != 200:
+            key = str(resp.status_code)
+            status_counts[key] = status_counts.get(key, 0) + 1
+            continue
 
+        payload = resp.json()
+        response_events = payload if isinstance(payload, list) else [payload]
+        for data in response_events:
+            bookmakers_data = data.get("bookmakers", {})
+            if not bookmakers_data:
+                empty_bookmakers += 1
+                continue
+
+            # Try each preferred bookmaker in order.
+            ml_home: float | None = None
+            ml_away: float | None = None
+            book_used: str = ""
+            for bk_name in BOOKMAKERS:
+                markets = bookmakers_data.get(bk_name)
+                if not markets:
+                    continue
+                ml_market = next((m for m in markets if m.get("name") == "ML"), None)
+                if not ml_market or not ml_market.get("odds"):
+                    continue
+                o = ml_market["odds"][0]
+                try:
+                    ml_home = float(o["home"])
+                    ml_away = float(o["away"])
+                    book_used = bk_name
+                    break
+                except (KeyError, TypeError, ValueError):
+                    continue
+
+            if ml_home is None or ml_away is None:
+                missing_ml += 1
+                continue
+
+            results.append({
+                "event_id": str(data.get("id", "")),
+                "player1": data.get("home", ""),
+                "player2": data.get("away", ""),
+                "commence_time": data.get("date", ""),
+                "p1_odds": _decimal_to_american(ml_home),
+                "p2_odds": _decimal_to_american(ml_away),
+                "p1_implied": _decimal_to_implied(ml_home),
+                "p2_implied": _decimal_to_implied(ml_away),
+                "book": book_used,
+                "fetched_at": _utc_now_iso(),
+            })
+
+    diagnostics = ", ".join(f"HTTP {k}: {v}" for k, v in status_counts.items())
     print(f"odds-api.io: {requests_used} odds requests used, "
-          f"{len(results)} events with ML odds returned.")
+          f"{len(results)} events with ML odds returned "
+          f"(empty bookmakers={empty_bookmakers}, missing ML={missing_ml}"
+          f"{', ' + diagnostics if diagnostics else ''}).")
     return results
 
 
-def upsert_odds_snapshot(match_id: int, p1_odds: int, p2_odds: int) -> None:
+def upsert_odds_snapshot(
+    match_id: int, p1_odds: int, p2_odds: int, book: str = "DraftKings"
+) -> None:
     """
     Write a new OddsSnapshot to the database for a given match.
-    Called by the APScheduler job every 10 minutes.
+    Called by the APScheduler job every 30 minutes.
     """
     from db.schema import SessionLocal, OddsSnapshot
 
@@ -274,7 +313,7 @@ def upsert_odds_snapshot(match_id: int, p1_odds: int, p2_odds: int) -> None:
         p2_odds=p2_odds,
         p1_implied=round(_implied(p1_odds), 4),
         p2_implied=round(_implied(p2_odds), 4),
-        book="DraftKings",
+        book=book,
         snapshot_time=_utc_now_naive(),
     )
     with SessionLocal() as s:
@@ -288,8 +327,9 @@ def refresh_all_odds() -> int:
     Returns number of snapshots written.
     Used by the APScheduler 10-minute job.
 
-    Rate budget: fetches events once (cached) + 1 call per event in next 24h.
-    Typical cost: 0-3 pagination calls + 3-8 odds calls = well under 100/hr.
+    Rate budget: fetches events once (cached) + batched odds for events in the
+    next 24 hours. Typical cost is 1-2 event calls plus 1-6 batch calls per
+    refresh, protected by a 20-request/hour process budget.
     """
     from db.queries import get_upcoming_matches
 
@@ -324,6 +364,7 @@ def refresh_all_odds() -> int:
                 row.match_id,
                 match_odds["p1_odds"],
                 match_odds["p2_odds"],
+                match_odds.get("book", "DraftKings"),
             )
             written += 1
 

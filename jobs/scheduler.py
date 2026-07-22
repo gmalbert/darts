@@ -2,7 +2,7 @@
 jobs/scheduler.py — APScheduler background jobs for BullzIQ.
 
 Jobs:
-  - odds_refresh:  Every 10 minutes — fetch new DraftKings odds
+  - odds_refresh:  Every 30 minutes — fetch new DraftKings/Bet365 odds
   - steam_check:   Every 5 minutes  — check for steam moves
   - nightly_stats: Daily at 3 AM UTC — rebuild player stats cache
 
@@ -171,14 +171,14 @@ def run_scheduler() -> None:
 
     scheduler = BlockingScheduler(timezone="UTC")
 
-    scheduler.add_job(job_refresh_odds, "interval", minutes=10, id="odds_refresh")
+    scheduler.add_job(job_refresh_odds, "interval", minutes=30, id="odds_refresh")
     scheduler.add_job(job_detect_steam, "interval", minutes=5, id="steam_check")
     scheduler.add_job(
         job_nightly_stats, "cron", hour=3, minute=0, id="nightly_stats"
     )
 
     log.info("BullzIQ scheduler starting...")
-    log.info("  odds_refresh: every 10 minutes")
+    log.info("  odds_refresh: every 30 minutes")
     log.info("  steam_check:  every 5 minutes")
     log.info("  nightly_stats: 03:00 UTC daily")
 

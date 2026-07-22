@@ -1,6 +1,6 @@
 name: Seed Database
 
-# Runs nightly to rebuild bullziq.db from real PDC data and commits it
+# Runs nightly to refresh bullziq.db from real PDC data and commits it
 # so users always load a pre-seeded database — no cold-start wait.
 #
 # Also triggers on manual dispatch or when the seed/scraper files change.
@@ -8,13 +8,19 @@ name: Seed Database
 
 on:
   schedule:
-    - cron: "0 3 * * *"   # 03:00 UTC daily (off-peak for dartsdatabase.co.uk)
+    - cron: "0 3 * * *"   # 03:00 UTC daily
   workflow_dispatch:       # manual trigger via GitHub Actions UI
+    inputs:
+      full_rebuild:
+        description: "Re-scan all historical event IDs"
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
     paths:
       - "db/seed_real.py"
-      - "scrapers/dartsdatabase.py"
+      - "scrapers/pdc.py"
       - "scrapers/odds_api.py"
       - ".github/workflows/seed_db.yml"
 
@@ -24,7 +30,7 @@ permissions:
 jobs:
   seed:
     runs-on: ubuntu-latest
-    timeout-minutes: 45   # dartsdatabase scrape is ~2–5 min; odds fetch is instant
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repo
@@ -41,11 +47,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Full rebuild from 2015 on schedule/manual/file-change triggers
-      - name: Run full real-data seed
+      # Scheduled runs are incremental; pushes and opted-in manual runs are full rebuilds.
+      - name: Run real-data seed
         env:
+          # These are separate providers; keep both credentials available.
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
-        run: python -m db.seed_real --start-year 2015
+          ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" || ( "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.full_rebuild }}" != "true" ) ]]; then
+            python -m db.seed_real --refresh-only
+          else
+            python -m db.seed_real --start-year 2015
+          fi
 
       # Verify the DB was created and has data
       - name: Verify database
@@ -81,12 +94,13 @@ jobs:
       - name: Export best bets for Sports Picks Grid
         env:
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
         run: python scripts/export_best_bets.py
         continue-on-error: true
 
       - name: Commit best_bets_today.json
         run: |
-          git add data_files/best_bets_today.json || true
+          git add -f data_files/best_bets_today.json
           if git diff --staged --quiet; then
             echo "No best_bets changes to commit."
           else

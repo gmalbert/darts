@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import time
 import sqlite3
+import os
 from datetime import datetime
 from typing import Generator
 
@@ -39,6 +40,12 @@ HEADERS = {
         "+https://bullziq.com/about)"
     )
 }
+if cookie := os.getenv("DARTS_DATABASE_COOKIE"):
+    HEADERS["Cookie"] = cookie
+
+
+class SourceAccessError(RuntimeError):
+    """Raised when dartsdatabase blocks the scraper instead of serving a page."""
 
 # ── PDC major event keywords (case-insensitive) ───────────────────────────────
 PDC_MAJOR_KEYWORDS = [
@@ -86,6 +93,13 @@ DISCOVERY_RANGES: list[tuple[int, int, int]] = [
     (24_800, 25_200, 2),    # ~2022–2023 era
     (25_200, 25_900, 1),    # ~2024–2026 era (dense, scan every ID)
 ]
+
+# Incremental refreshes use the latest known event ID as a cursor.  The
+# look-back catches late corrections/reposted events; the look-ahead leaves
+# room for new events since the last successful seed.  A full historical scan
+# remains available for manual reconciliation runs.
+RECENT_EVENT_LOOKBACK = 400
+RECENT_EVENT_LOOKAHEAD = 800
 
 
 # ── Parsing helpers ───────────────────────────────────────────────────────────
@@ -217,6 +231,12 @@ def _fetch_event(eid: int, delay: float = 1.0) -> dict | None:
         resp = requests.get(url, params={"eid": eid}, headers=HEADERS, timeout=15)
         if resp.status_code == 404:
             return None
+        if resp.status_code in (403, 429):
+            raise SourceAccessError(
+                f"dartsdatabase blocked the request for eid={eid} "
+                f"(HTTP {resp.status_code}). Set DARTS_DATABASE_COOKIE "
+                "to an authorized session cookie or wait for access to return."
+            )
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"  Request failed for eid={eid}: {exc}")
@@ -227,23 +247,28 @@ def _fetch_event(eid: int, delay: float = 1.0) -> dict | None:
     return _parse_event_page(resp.text, eid)
 
 
-def _discover_events(start_year: int = 2015, end_year: int | None = None) -> Generator[dict, None, None]:
+def _discover_events(
+    start_year: int = 2015,
+    end_year: int | None = None,
+    discovery_ranges: list[tuple[int, int, int]] | None = None,
+) -> Generator[dict, None, None]:
     """
     Scan ID ranges to discover PDC major events between start_year and end_year (inclusive).
     Yields parsed event dicts.
     """
+    ranges = discovery_ranges or DISCOVERY_RANGES
     seen_eids: set[int] = set()
-    total_planned = sum(len(range(a, b, s)) for a, b, s in DISCOVERY_RANGES)
+    total_planned = sum(len(range(a, b, s)) for a, b, s in ranges)
     probed = 0
     matched = 0
 
-    print(f"  Discovery plan: {total_planned} probes across {len(DISCOVERY_RANGES)} ranges")
+    print(f"  Discovery plan: {total_planned} probes across {len(ranges)} ranges")
 
-    for range_index, (range_start, range_end, step) in enumerate(DISCOVERY_RANGES, start=1):
+    for range_index, (range_start, range_end, step) in enumerate(ranges, start=1):
         range_probes = len(range(range_start, range_end, step))
         range_start_time = time.monotonic()
         print(
-            f"  Range {range_index}/{len(DISCOVERY_RANGES)}: "
+            f"  Range {range_index}/{len(ranges)}: "
             f"eid {range_start}-{range_end - 1} step {step} "
             f"(~{range_probes} probes)"
         )
@@ -279,10 +304,7 @@ def _discover_events(start_year: int = 2015, end_year: int | None = None) -> Gen
             yield event
 
         range_elapsed = time.monotonic() - range_start_time
-        print(
-            f"  Completed range {range_index}/{len(DISCOVERY_RANGES)} "
-            f"in {range_elapsed:.0f}s"
-        )
+        print(f"  Completed range {range_index}/{len(ranges)} in {range_elapsed:.0f}s")
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -309,13 +331,30 @@ TOURNAMENT_IDS: dict[str, str] = {
 }
 
 
-def seed_database(db_path: str = "data_files/bullziq.db", start_year: int = 2015, end_year: int | None = None) -> None:
+def _recent_discovery_ranges(
+    max_event_id: int,
+    lookback: int = RECENT_EVENT_LOOKBACK,
+    lookahead: int = RECENT_EVENT_LOOKAHEAD,
+) -> list[tuple[int, int, int]]:
+    """Return a bounded event-ID window around the last successful seed."""
+    start = max(1, max_event_id - lookback)
+    end = max_event_id + lookahead + 1
+    return [(start, end, 1)]
+
+
+def seed_database(
+    db_path: str = "data_files/bullziq.db",
+    start_year: int = 2015,
+    end_year: int | None = None,
+    recent_only: bool = False,
+) -> None:
     """
     Discover PDC major events from dartsdatabase.co.uk and write raw match
     rows to the ``raw_matches`` SQLite table.
 
     Designed for scheduled/manual use.  Polite delays between requests.
-    Scans ~2 500 event IDs using adaptive step sizes (see DISCOVERY_RANGES).
+    Full rebuilds scan all historical discovery ranges.  Incremental refreshes
+    scan a bounded window around the highest event ID already in raw_matches.
     Pass end_year to limit the scrape to a specific year range.
     """
     conn = sqlite3.connect(db_path)
@@ -345,16 +384,44 @@ def seed_database(db_path: str = "data_files/bullziq.db", start_year: int = 2015
 
     total = 0
     year_range = f"{start_year}–{end_year}" if end_year else f"{start_year}+"
+    discovery_ranges = None
+    if recent_only:
+        max_event_id = cur.execute(
+            "SELECT MAX(event_id) FROM raw_matches"
+        ).fetchone()[0]
+        if max_event_id is None:
+            print("No existing event cursor; falling back to full discovery scan.")
+        else:
+            discovery_ranges = _recent_discovery_ranges(int(max_event_id))
+            start, end, _ = discovery_ranges[0]
+            print(
+                f"Incremental scan window: event IDs {start}–{end - 1} "
+                f"({end - start} probes)"
+            )
+
     print(f"Scanning dartsdatabase.co.uk for PDC major events ({year_range})...")
 
-    for event in _discover_events(start_year=start_year, end_year=end_year):
+    for event in _discover_events(
+        start_year=start_year,
+        end_year=end_year,
+        discovery_ranges=discovery_ranges,
+    ):
         for m in event["matches"]:
             cur.execute(
                 """
-                INSERT OR IGNORE INTO raw_matches
+                INSERT INTO raw_matches
                 (event_id, tournament_id, year, round, player1, score1,
                  score2, player2, winner, match_date, avg_p1, avg_p2)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(event_id, player1, player2, round) DO UPDATE SET
+                    tournament_id = excluded.tournament_id,
+                    year = excluded.year,
+                    score1 = excluded.score1,
+                    score2 = excluded.score2,
+                    winner = excluded.winner,
+                    match_date = excluded.match_date,
+                    avg_p1 = excluded.avg_p1,
+                    avg_p2 = excluded.avg_p2
                 """,
                 (
                     m["event_id"], m["tournament_type"], m["year"],
