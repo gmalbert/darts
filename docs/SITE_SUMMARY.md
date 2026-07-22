@@ -26,7 +26,7 @@ streamlit run predictions.py
 |---|---|
 | UI | Streamlit (multi-page) |
 | ORM / DB | SQLAlchemy 2.0 + SQLite |
-| Odds | odds-api.io (NOT The Odds API) |
+| Odds | odds-api.io (DraftKings + Bet365; NOT The Odds API) |
 | Visualization | Plotly |
 | Config | python-dotenv (`.env` file) |
 

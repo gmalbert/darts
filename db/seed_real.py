@@ -4,10 +4,10 @@ db/seed_real.py — Real PDC data seeder for BullzIQ.
 Pipeline
 --------
 1. Wipe existing DB tables (clean slate)
-2. Scrape dartsdatabase.co.uk → raw_matches SQLite table
+2. Scrape the public PDC results feed → raw_matches SQLite table
 3. Import raw_matches into ORM (Player, Tournament, Match, EloHistory)
 4. Compute Elo ratings chronologically over all historical matches
-5. Fetch live DraftKings odds via The Odds API (if ODDS_API_KEY is set)
+5. Fetch live DraftKings odds via odds-api.io (if ODDS_API_IO_KEY is set)
 6. Write data_files/db_is_real.flag so ensure_seeded() skips demo data
 
 Usage
@@ -38,13 +38,13 @@ LOCK_PATH = _ROOT / "data_files" / "db_seed_in_progress.flag"
 from db.schema import Base, engine, SessionLocal, init_db
 from db.schema import Player, Tournament, Match, EloHistory, OddsSnapshot
 from models.elo import DartsElo
-from scrapers.dartsdatabase import seed_database as _scrape_raw, TOURNAMENT_IDS
+from scrapers.pdc import seed_database as _scrape_raw, TOURNAMENT_IDS
 
 # Reuse player metadata + tournament metadata from the existing demo seed
 from db.seed import PLAYER_DATA, TOURNAMENT_DATA
 
 # ── Lookup tables ──────────────────────────────────────────────────────────────
-# dartsdatabase.co.uk string ID  →  tournament_type key
+# PDC feed tournament ID  →  tournament_type key
 _TOURN_ID_TO_TYPE: dict[str, str] = {v: k for k, v in TOURNAMENT_IDS.items()}
 
 # tournament_type key  →  TOURNAMENT_DATA entry
@@ -69,7 +69,7 @@ _KNOWN_PLAYERS: dict[str, dict] = {p["name"]: p for p in PLAYER_DATA}
 # ── Date parsing ───────────────────────────────────────────────────────────────
 
 def _parse_date(raw: str | None, fallback_year: int) -> datetime:
-    """Robustly parse a raw date string from dartsdatabase.co.uk."""
+    """Robustly parse a raw date string from the PDC results feed."""
     if not raw or str(raw).strip() in ("None", "", "nan"):
         return datetime(fallback_year, 7, 1)
     s = str(raw).strip()
@@ -99,7 +99,12 @@ def _utc_now_naive() -> datetime:
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
 
-def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool = False) -> None:
+def run(
+    start_year: int = 2015,
+    end_year: int | None = None,
+    refresh_only: bool = False,
+    refresh_odds: bool = False,
+) -> None:
     year_range = f"{start_year}–{end_year}" if end_year else f"{start_year}+"
     print(f"\n=== BullzIQ Real Data Seeder  (years={year_range}, refresh_only={refresh_only}) ===\n")
 
@@ -113,22 +118,32 @@ def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool 
         else:
             print("Dropping and recreating ORM tables...")
 
-        Base.metadata.drop_all(engine)
-
         if not refresh_only:
+            Base.metadata.drop_all(engine)
             # Full rebuild starts from a blank raw staging table.
             _conn = sqlite3.connect(str(DB_PATH))
             _conn.execute("DROP TABLE IF EXISTS raw_matches")
             _conn.commit()
             _conn.close()
 
-        init_db()  # (re)create all ORM tables
+            init_db()  # (re)create all ORM tables
 
-        # ── 2. Scrape dartsdatabase.co.uk ─────────────────────────────────────
+        # ── 2. Scrape the free public PDC feed ─────────────────────────────────
         scrape_from = datetime.now().year if refresh_only else start_year
         scrape_to = datetime.now().year if refresh_only else end_year
-        print(f"Scraping dartsdatabase.co.uk from {scrape_from}...")
-        _scrape_raw(db_path=str(DB_PATH), start_year=scrape_from, end_year=scrape_to)
+        print(f"Scraping the public PDC results feed from {scrape_from}...")
+        _scrape_raw(
+            db_path=str(DB_PATH),
+            start_year=scrape_from,
+            end_year=scrape_to,
+            recent_only=refresh_only,
+        )
+
+        # Preserve the last good ORM database if an incremental source refresh
+        # fails. Rebuild only after the raw scrape has completed successfully.
+        if refresh_only:
+            Base.metadata.drop_all(engine)
+            init_db()
 
         # ── 3. Load raw matches ───────────────────────────────────────────────
         conn = sqlite3.connect(str(DB_PATH))
@@ -145,16 +160,16 @@ def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool 
 
         if raw_df.empty:
             raise RuntimeError(
-                "No raw matches found from dartsdatabase.co.uk. "
+                "No raw matches found from the public PDC feed. "
                 "Real seeding aborted; demo fallback is disabled."
             )
 
-        print(f"Loaded {len(raw_df)} raw matches from dartsdatabase.co.uk")
+        print(f"Loaded {len(raw_df)} raw matches from the public PDC feed")
 
         # ── 4. Build ORM entities ─────────────────────────────────────────────
         with SessionLocal() as s:
 
-            # --- Tournaments (only those covered by dartsdatabase.co.uk) ---
+            # --- Tournaments (only those covered by the PDC major filter) ---
             tourn_db: dict[str, int] = {}  # tournament_type → DB id
             for t_type, tid in TOURNAMENT_IDS.items():
                 meta = _TOURN_TYPE_META.get(t_type)
@@ -305,8 +320,13 @@ def run(start_year: int = 2015, end_year: int | None = None, refresh_only: bool 
             print(f"Imported {match_count} historical matches.")
             print(f"Wrote {len(elo_batch)} EloHistory records.")
 
-        # ── 5. Live odds via The Odds API ─────────────────────────────────────
-        _refresh_odds()
+        # ── 5. Live odds via odds-api.io (opt-in) ─────────────────────────────
+        # Odds have their own scheduled refresh path. Avoid spending shared API
+        # quota during every historical/PDC data seed unless explicitly asked.
+        if refresh_odds:
+            _refresh_odds()
+        else:
+            print("Skipping odds refresh (use --refresh-odds to opt in).")
 
         # ── 6. Write real-data flag ───────────────────────────────────────────
         FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -461,7 +481,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--refresh-only", action="store_true",
-        help="Only scrape the current year and refresh odds (fast daily refresh).",
+        help="Only scrape the current year (fast daily refresh).",
+    )
+    parser.add_argument(
+        "--refresh-odds", action="store_true",
+        help="Also fetch live odds; normally handled by the dedicated odds job.",
     )
     args = parser.parse_args()
-    run(start_year=args.start_year, end_year=args.end_year, refresh_only=args.refresh_only)
+    run(
+        start_year=args.start_year,
+        end_year=args.end_year,
+        refresh_only=args.refresh_only,
+        refresh_odds=args.refresh_odds,
+    )

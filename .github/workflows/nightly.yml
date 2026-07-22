@@ -27,10 +27,19 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Check odds-api.io secret
+        env:
+          ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
+        run: |
+          if [[ -z "$ODDS_API_IO_KEY" ]]; then
+            echo "::error::Repository secret ODDS_API_IO_KEY is not configured"
+            exit 1
+          fi
+
       - name: Refresh odds snapshot
         env:
           ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
-        run: python scrapers/odds_api.py || echo "[warn] Odds refresh failed — continuing"
+        run: python scrapers/odds_api.py
 
       - name: Export best bets for Sports Picks Grid
         run: python scripts/export_best_bets.py
@@ -64,8 +73,12 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data_files/best_bets_today.json
-          git diff --staged --quiet || git commit -m "chore: update darts best_bets_today [skip ci]"
-          git push
+          git add -f data_files/best_bets_today.json
+          if git diff --staged --quiet; then
+            echo "No best-bets changes to commit."
+          else
+            git commit -m "chore: update darts best_bets_today [skip ci]"
+            git push
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
