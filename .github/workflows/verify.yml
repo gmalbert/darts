@@ -32,7 +32,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"exists={'true' if exists else 'false'}\n")
           PY
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt pytest
       - name: Compile application code
         run: python -m compileall -q backend db models scrapers scripts
       - name: Run tests
