@@ -1,0 +1,30 @@
+{
+  "name": "bullziq-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --noEmit",
+    "preview": "vite preview",
+    "test:calc": "tsx src/utils/calculators.parity.test.ts"
+  },
+  "dependencies": {
+    "plotly.js": "^3.1.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-plotly.js": "^2.6.0",
+    "react-router-dom": "^7.9.4"
+  },
+  "devDependencies": {
+    "@types/plotly.js": "^3.0.6",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/react-plotly.js": "^2.6.3",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.10"
+  }
+}

@@ -3,6 +3,14 @@
 ## Overview
 Darts analytics and betting intelligence platform. Tracks players, tournaments, odds snapshots, and model predictions via a Streamlit app backed by SQLite.
 
+## Hosting and odds policy
+
+The React frontend targets Cloudflare and the FastAPI serving layer targets Render. All heavy scraping and modeling stays on GitHub Actions. The website serves cached overnight odds only: no visitor-triggered pulls, startup odds refreshes, or continuous polling worker. Continuous scheduling in `jobs/scheduler.py` is disabled.
+
+The dedicated overnight workflow runs at 07:00 UTC (3 AM Eastern during daylight saving, 2 AM in winter), saves fixtures and odds snapshots, and exports best bets from that cache. Provider access requires `GITHUB_ACTIONS=true` and `BULLZIQ_NIGHTLY_ODDS_REFRESH=true`, with the refresh flag set only on that job's ingestion step. Reloading the website reads the saved prices. Snapshot timestamps remain visible so older prices are identifiable.
+
+The workflow currently publishes SQLite through Git. Publishing those overnight results to the hosted serving database remains deployment work; do not assume GitHub updates automatically synchronize a Render persistent database.
+
 ## Data Flow
 ```
 odds-api.io (live darts markets)

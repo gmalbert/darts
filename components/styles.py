@@ -529,7 +529,24 @@ def _theme_from_mode() -> str:
 
 
 def get_theme() -> str:
-    """Return active auto theme (browser-local day/night via query param)."""
+    """Return the active theme and retain an explicit browser choice per session.
+
+    Streamlit's multipage sidebar navigation can drop URL query parameters.
+    Remembering an explicit ``biq_mode`` preserves the browser-selected palette
+    when moving between pages, while the browser-time synchronizer continues to
+    update that value when the local mode changes.
+    """
+    mode = st.query_params.get("biq_mode", "")
+    if isinstance(mode, list):
+        mode = mode[0] if mode else ""
+    if mode in {"day", "night"}:
+        st.session_state["biq_mode"] = mode
+    else:
+        mode = st.session_state.get("biq_mode", "")
+    if mode == "day":
+        return DAY_THEME
+    if mode == "night":
+        return NIGHT_THEME
     return _theme_from_mode()
 
 

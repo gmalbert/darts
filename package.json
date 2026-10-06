@@ -1,0 +1,33 @@
+{
+  "name": "darts",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">\r \t<img src=\"data_files/logo.png\" alt=\"BullzIQ logo\" width=\"220\" />\r </p>",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "parity:streamlit": "tsx parity/capture_streamlit.ts",
+    "parity:react": "tsx parity/capture_react.ts",
+    "parity:smoke": "tsx parity/smoke_react.ts",
+    "parity:compare": "tsx parity/compare.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gmalbert/darts.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gmalbert/darts/issues"
+  },
+  "homepage": "https://github.com/gmalbert/darts#readme",
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/pngjs": "^6.0.5",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15"
+  }
+}

@@ -67,7 +67,12 @@ Fixtures can appear before odds snapshots exist.
 
 - Upcoming match stubs are created independently from odds availability.
 - Odds snapshots are only written when ML markets exist.
-- The scheduler refreshes odds periodically (see [jobs/scheduler.py](jobs/scheduler.py)).
+- The overnight GitHub Actions job saves odds snapshots once per scheduled run (07:00 UTC).
+- The website only reads those saved prices. Page loads, reloads, and API startup never refresh sportsbook odds.
+- Continuous scheduling in `jobs/scheduler.py` is disabled. Do not deploy an odds worker on Render.
+- Provider requests require both `GITHUB_ACTIONS=true` and `BULLZIQ_NIGHTLY_ODDS_REFRESH=true`; set the refresh permission only on the overnight workflow step.
+
+Production hosting target: Cloudflare serves React, Render serves the read-only FastAPI data routes, and GitHub Actions performs all heavy processing and nightly odds ingestion. Publishing the GH snapshot to the hosted database still needs deployment preparation; the current workflow commits SQLite snapshots.
 
 If fixtures are visible but odds are missing, the most common reason is simply that lines are not open yet.
 
