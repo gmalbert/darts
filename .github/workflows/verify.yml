@@ -13,12 +13,25 @@ jobs:
   python:
     name: Python and API checks
     runs-on: ubuntu-latest
+    outputs:
+      has_visual_baseline: ${{ steps.baseline.outputs.exists }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
+      - name: Check for approved visual baseline
+        id: baseline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          exists = any(Path("parity/streamlit").rglob("*.png"))
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"exists={'true' if exists else 'false'}\n")
+          PY
       - run: pip install -r requirements.txt
       - name: Compile application code
         run: python -m compileall -q backend db models scrapers scripts
@@ -50,7 +63,7 @@ jobs:
     # This only runs after an approved Streamlit baseline is committed.  It
     # deliberately uses the real API and Vite server so captures exercise the
     # same cross-origin integration users receive.
-    if: ${{ hashFiles('parity/streamlit/**/*.png') != '' }}
+    if: ${{ needs.python.outputs.has_visual_baseline == 'true' }}
     runs-on: ubuntu-latest
     needs: [python, frontend]
     steps:
