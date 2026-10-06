@@ -1,8 +1,9 @@
-name: Darts Nightly Best Bets Export
+name: Darts Overnight Odds Cache and Best Bets
 
 on:
   schedule:
-    # 07:00 UTC — after European morning odds settle
+    # 07:00 UTC — 3 AM Eastern during daylight saving, 2 AM in winter.
+    # The only scheduled odds-provider refresh; visitors read saved snapshots.
     - cron: '0 7 * * *'
   workflow_dispatch:
 
@@ -36,10 +37,11 @@ jobs:
             exit 1
           fi
 
-      - name: Refresh odds snapshot
+      - name: Save overnight odds snapshots
         env:
           ODDS_API_IO_KEY: ${{ secrets.ODDS_API_IO_KEY }}
-        run: python scrapers/odds_api.py
+          BULLZIQ_NIGHTLY_ODDS_REFRESH: "true"
+        run: python -c "from db.seed_real import _refresh_odds; _refresh_odds()"
 
       - name: Export best bets for Sports Picks Grid
         run: python scripts/export_best_bets.py
@@ -69,15 +71,15 @@ jobs:
           print(f"Validated {len(bets)} Darts bets")
           PY
 
-      - name: Commit best_bets_today.json
+      - name: Commit overnight database and best bets
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f data_files/best_bets_today.json
+          git add -f data_files/bullziq.db data_files/best_bets_today.json
           if git diff --staged --quiet; then
-            echo "No best-bets changes to commit."
+            echo "No overnight cache changes to commit."
           else
-            git commit -m "chore: update darts best_bets_today [skip ci]"
+            git commit -m "chore: publish overnight darts cache [skip ci]" -m "## Overnight data update" -m "- Persist the scheduled odds snapshots in the serving database." -m "- Export best bets from the same cached prices." -m "- Keep provider pulls in GitHub Actions; the website reads saved data."
             git push
           fi
         env:

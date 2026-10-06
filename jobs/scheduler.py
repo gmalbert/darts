@@ -1,15 +1,8 @@
 """
 jobs/scheduler.py — APScheduler background jobs for BullzIQ.
 
-Jobs:
-  - odds_refresh:  Every 30 minutes — fetch new DraftKings/Bet365 odds
-  - steam_check:   Every 5 minutes  — check for steam moves
-  - nightly_stats: Daily at 3 AM UTC — rebuild player stats cache
-
-Run this as a SEPARATE process (not in the Streamlit app thread):
-    python -m jobs.scheduler
-
-Or integrate with your deployment setup (Railway worker, etc.)
+Legacy job helpers. Continuous scheduling is disabled: the website serves
+overnight cached odds, and heavy processing belongs to GitHub Actions.
 """
 
 from __future__ import annotations
@@ -20,22 +13,10 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bullziq.scheduler")
 
-try:
-    from apscheduler.schedulers.blocking import BlockingScheduler
-    APSCHEDULER_AVAILABLE = True
-except ImportError:
-    APSCHEDULER_AVAILABLE = False
-    log.warning("APScheduler not installed. Install with: pip install apscheduler")
-
-
 def job_refresh_odds() -> None:
-    log.info("Running odds refresh job...")
-    try:
-        from scrapers.odds_api import refresh_all_odds
-        n = refresh_all_odds()
-        log.info(f"Odds refresh: {n} snapshots written")
-    except Exception as exc:
-        log.error(f"Odds refresh failed: {exc}")
+    raise RuntimeError(
+        "Continuous odds refresh is disabled. Use the overnight GitHub Actions job."
+    )
 
 
 def job_detect_steam() -> None:
@@ -165,27 +146,9 @@ def job_nightly_stats() -> None:
 
 
 def run_scheduler() -> None:
-    if not APSCHEDULER_AVAILABLE:
-        log.error("Cannot start scheduler — APScheduler not installed.")
-        return
-
-    scheduler = BlockingScheduler(timezone="UTC")
-
-    scheduler.add_job(job_refresh_odds, "interval", minutes=30, id="odds_refresh")
-    scheduler.add_job(job_detect_steam, "interval", minutes=5, id="steam_check")
-    scheduler.add_job(
-        job_nightly_stats, "cron", hour=3, minute=0, id="nightly_stats"
+    raise SystemExit(
+        "Continuous scheduling is disabled. Serve cached odds and run overnight jobs on GitHub Actions."
     )
-
-    log.info("BullzIQ scheduler starting...")
-    log.info("  odds_refresh: every 30 minutes")
-    log.info("  steam_check:  every 5 minutes")
-    log.info("  nightly_stats: 03:00 UTC daily")
-
-    try:
-        scheduler.start()
-    except KeyboardInterrupt:
-        log.info("Scheduler stopped.")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,100 @@
+name: Verify application
+
+on:
+  pull_request:
+  push:
+    branches: [main, "design/**", "codex/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python and API checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Compile application code
+        run: python -m compileall -q backend db models scrapers scripts
+      - name: Run tests
+        run: python -m pytest -q
+
+  frontend:
+    name: React build and calculator parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Type-check and build
+        working-directory: frontend
+        run: npm run build
+      - name: Verify calculator parity
+        working-directory: frontend
+        run: npm run test:calc
+
+  visual-parity:
+    name: Visual parity harness
+    # This only runs after an approved Streamlit baseline is committed.  It
+    # deliberately uses the real API and Vite server so captures exercise the
+    # same cross-origin integration users receive.
+    if: ${{ hashFiles('parity/streamlit/**/*.png') != '' }}
+    runs-on: ubuntu-latest
+    needs: [python, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install API dependencies
+        run: pip install -r requirements.txt
+      - name: Install parity dependencies
+        run: npm ci
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Start API and React services
+        run: |
+          python -m uvicorn backend.app:app --host 127.0.0.1 --port 8001 > api.log 2>&1 &
+          (cd frontend && npm run dev -- --host 127.0.0.1 --port 5174 > ../vite.log 2>&1) &
+          curl --retry 20 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:8001/api/v1/health
+          curl --retry 20 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:5174
+      - name: Capture and compare React against the approved baseline
+        run: |
+          REACT_URL=http://127.0.0.1:5174 npm run parity:smoke
+          REACT_URL=http://127.0.0.1:5174 npm run parity:react
+          npm run parity:compare
+      - name: Upload visual diff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-parity-report
+          path: |
+            parity/DIFF_REPORT.md
+            parity/diff/
+            api.log
+            vite.log
+          if-no-files-found: ignore

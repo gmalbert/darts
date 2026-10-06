@@ -82,3 +82,16 @@ data_files/*.json
 static/sitemap.xml
 
 *code-workspace
+# Node
+node_modules/
+dist/
+.vite/
+
+# Parity capture artifacts
+parity/*.log
+parity/*.err.log
+parity/*.png
+parity/diff/
+parity/react/
+parity/streamlit/
+parity/streamlit-nav-test/

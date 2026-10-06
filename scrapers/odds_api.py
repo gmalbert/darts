@@ -9,7 +9,8 @@ Free tier: 100 req/hour, bookmakers selected in the account (DraftKings + Bet365
 Usage:
     from scrapers.odds_api import fetch_darts_odds, upsert_odds_snapshot
 
-Set ODDS_API_IO_KEY in your .env file.
+Provider requests are allowed only in the overnight GitHub Actions job,
+with BULLZIQ_NIGHTLY_ODDS_REFRESH=true and ODDS_API_IO_KEY configured.
 """
 
 from __future__ import annotations
@@ -81,7 +82,15 @@ def _decimal_to_implied(decimal_odds: float) -> float:
 
 
 def _get(path: str, params: dict) -> requests.Response | None:
-    """GET helper; returns None on network error."""
+    """GET helper; web hosts cannot initiate odds-provider requests."""
+    if not (
+        os.getenv("GITHUB_ACTIONS") == "true"
+        and os.getenv("BULLZIQ_NIGHTLY_ODDS_REFRESH") == "true"
+    ):
+        raise RuntimeError(
+            "Odds-provider pulls are restricted to the overnight GitHub Actions job. "
+            "The website must serve cached snapshots."
+        )
     now = time.monotonic()
     _request_times[:] = [t for t in _request_times if now - t < 3600]
     if len(_request_times) >= REQUEST_BUDGET_PER_HOUR:
@@ -325,7 +334,7 @@ def refresh_all_odds() -> int:
     """
     Fetch latest odds and upsert snapshots for all upcoming matches.
     Returns number of snapshots written.
-    Used by the APScheduler 10-minute job.
+    Legacy batch helper; provider access is restricted to the overnight GH job.
 
     Rate budget: fetches events once (cached) + batched odds for events in the
     next 24 hours. Typical cost is 1-2 event calls plus 1-6 batch calls per
