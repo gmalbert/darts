@@ -1,14 +1,147 @@
 {
   "meta": {
     "sport": "Darts",
-    "generated_at": "2026-10-21T08:19:28.762096+00:00",
+    "generated_at": "2026-10-21T12:47:04.957546+00:00",
     "model_version": "1.0.0",
     "season": "2026",
-    "status": "no_picks",
+    "status": "ok",
     "tier_definition": "edge-v1",
     "lookahead_days": 7,
-    "source_commit": "1abfec6df4ad73671be457517f02615d80e380e7",
-    "total_bets": 0
+    "source_commit": "86ae6f1d8b2b71e4c839262eb49396a1ded0cfba",
+    "total_bets": 11
   },
-  "bets": []
+  "bets": [
+    {
+      "game_date": "2026-10-22",
+      "game": "Luke Woodhouse vs Dirk van Duijvenbode",
+      "game_time": "17:00",
+      "bet_type": "moneyline",
+      "pick": "Dirk van Duijvenbode",
+      "confidence": 0.5369,
+      "edge": 0.0607,
+      "odds": 110,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-22",
+      "game": "Gerwyn Price vs Rob Cross",
+      "game_time": "18:30",
+      "bet_type": "moneyline",
+      "pick": "Gerwyn Price",
+      "confidence": 0.7928,
+      "edge": 0.1392,
+      "odds": -189,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-22",
+      "game": "James Wade vs Damon Heta",
+      "game_time": "19:00",
+      "bet_type": "moneyline",
+      "pick": "James Wade",
+      "confidence": 0.8423,
+      "edge": 0.2054,
+      "odds": -175,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-22",
+      "game": "Ross Smith vs Karel Sedlacek",
+      "game_time": "20:30",
+      "bet_type": "moneyline",
+      "pick": "Ross Smith",
+      "confidence": 0.8254,
+      "edge": 0.1885,
+      "odds": -175,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Ryan Joyce vs Jermaine Wattimena",
+      "game_time": "17:00",
+      "bet_type": "moneyline",
+      "pick": "Ryan Joyce",
+      "confidence": 0.5046,
+      "edge": 0.0827,
+      "odds": 137,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Krzysztof Ratajski vs Dave Chisnall",
+      "game_time": "17:30",
+      "bet_type": "moneyline",
+      "pick": "Krzysztof Ratajski",
+      "confidence": 0.7592,
+      "edge": 0.0925,
+      "odds": -200,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Nathan Aspinall vs Cristo Reyes",
+      "game_time": "18:00",
+      "bet_type": "moneyline",
+      "pick": "Nathan Aspinall",
+      "confidence": 0.8482,
+      "edge": 0.2458,
+      "odds": -152,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Jonny Clayton vs Niko Springer",
+      "game_time": "18:30",
+      "bet_type": "moneyline",
+      "pick": "Jonny Clayton",
+      "confidence": 0.9114,
+      "edge": 0.1595,
+      "odds": -303,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Wessel Nijman vs Martin Schindler",
+      "game_time": "19:30",
+      "bet_type": "moneyline",
+      "pick": "Martin Schindler",
+      "confidence": 0.6039,
+      "edge": 0.2222,
+      "odds": 162,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Kevin Doets vs Michael van Gerwen",
+      "game_time": "20:00",
+      "bet_type": "moneyline",
+      "pick": "Michael van Gerwen",
+      "confidence": 0.5609,
+      "edge": 0.0609,
+      "odds": 100,
+      "tier": "Elite",
+      "notes": "European Championship"
+    },
+    {
+      "game_date": "2026-10-23",
+      "game": "Josh Rock vs Chris Dobey",
+      "game_time": "20:30",
+      "bet_type": "moneyline",
+      "pick": "Josh Rock",
+      "confidence": 0.5705,
+      "edge": 0.0705,
+      "odds": 100,
+      "tier": "Elite",
+      "notes": "European Championship"
+    }
+  ]
 }
