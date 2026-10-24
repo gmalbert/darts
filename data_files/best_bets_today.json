@@ -1,99 +1,14 @@
 {
   "meta": {
     "sport": "Darts",
-    "generated_at": "2026-10-23T12:28:36.417850+00:00",
+    "generated_at": "2026-10-24T07:55:48.159793+00:00",
     "model_version": "1.0.0",
     "season": "2026",
-    "status": "ok",
+    "status": "no_picks",
     "tier_definition": "edge-v1",
     "lookahead_days": 7,
-    "source_commit": "be96bcf20a757adf1036780572adda8a0cd097db",
-    "total_bets": 7
+    "source_commit": "317fec831462b4cebc7a4d72aaeb190b8f52b1db",
+    "total_bets": 0
   },
-  "bets": [
-    {
-      "game_date": "2026-10-23",
-      "game": "Ryan Joyce vs Jermaine Wattimena",
-      "game_time": "17:15",
-      "bet_type": "moneyline",
-      "pick": "Ryan Joyce",
-      "confidence": 0.5046,
-      "edge": 0.1046,
-      "odds": 150,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Krzysztof Ratajski vs Dave Chisnall",
-      "game_time": "17:45",
-      "bet_type": "moneyline",
-      "pick": "Krzysztof Ratajski",
-      "confidence": 0.7592,
-      "edge": 0.0925,
-      "odds": -200,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Nathan Aspinall vs Cristo Reyes",
-      "game_time": "18:15",
-      "bet_type": "moneyline",
-      "pick": "Nathan Aspinall",
-      "confidence": 0.8482,
-      "edge": 0.2458,
-      "odds": -152,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Jonny Clayton vs Niko Springer",
-      "game_time": "18:45",
-      "bet_type": "moneyline",
-      "pick": "Jonny Clayton",
-      "confidence": 0.9114,
-      "edge": 0.1761,
-      "odds": -278,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Wessel Nijman vs Martin Schindler",
-      "game_time": "19:45",
-      "bet_type": "moneyline",
-      "pick": "Martin Schindler",
-      "confidence": 0.6039,
-      "edge": 0.2222,
-      "odds": 162,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Kevin Doets vs Michael van Gerwen",
-      "game_time": "20:15",
-      "bet_type": "moneyline",
-      "pick": "Michael van Gerwen",
-      "confidence": 0.5609,
-      "edge": 0.0847,
-      "odds": 110,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-23",
-      "game": "Josh Rock vs Chris Dobey",
-      "game_time": "20:45",
-      "bet_type": "moneyline",
-      "pick": "Josh Rock",
-      "confidence": 0.5705,
-      "edge": 0.0943,
-      "odds": 110,
-      "tier": "Elite",
-      "notes": "European Championship"
-    }
-  ]
+  "bets": []
 }
