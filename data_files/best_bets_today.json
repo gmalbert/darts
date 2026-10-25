@@ -1,87 +1,14 @@
 {
   "meta": {
     "sport": "Darts",
-    "generated_at": "2026-10-24T11:53:54.562359+00:00",
+    "generated_at": "2026-10-25T08:09:44.058318+00:00",
     "model_version": "1.0.0",
     "season": "2026",
-    "status": "ok",
+    "status": "no_picks",
     "tier_definition": "edge-v1",
     "lookahead_days": 7,
-    "source_commit": "0349644f14eb0153eeb254d2bbc2d870c82fd024",
-    "total_bets": 6
+    "source_commit": "ba515764fb90223b85a88781729c99815eee62b9",
+    "total_bets": 0
   },
-  "bets": [
-    {
-      "game_date": "2026-10-24",
-      "game": "Stephen Bunting vs Kim Huybrechts",
-      "game_time": "12:15",
-      "bet_type": "moneyline",
-      "pick": "Stephen Bunting",
-      "confidence": 0.7899,
-      "edge": 0.1688,
-      "odds": -164,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-24",
-      "game": "Ross Smith vs Damon Heta",
-      "game_time": "13:15",
-      "bet_type": "moneyline",
-      "pick": "Ross Smith",
-      "confidence": 0.7034,
-      "edge": 0.0367,
-      "odds": -200,
-      "tier": "Strong",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-24",
-      "game": "Gian van Veen vs Luke Woodhouse",
-      "game_time": "14:15",
-      "bet_type": "moneyline",
-      "pick": "Gian van Veen",
-      "confidence": 0.6719,
-      "edge": 0.0905,
-      "odds": -139,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-24",
-      "game": "Krzysztof Ratajski vs Kevin Doets",
-      "game_time": "17:15",
-      "bet_type": "moneyline",
-      "pick": "Krzysztof Ratajski",
-      "confidence": 0.5784,
-      "edge": 0.2451,
-      "odds": 200,
-      "tier": "Elite",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-24",
-      "game": "Martin Schindler vs Jermaine Wattimena",
-      "game_time": "18:15",
-      "bet_type": "moneyline",
-      "pick": "Jermaine Wattimena",
-      "confidence": 0.5968,
-      "edge": 0.0412,
-      "odds": -125,
-      "tier": "Strong",
-      "notes": "European Championship"
-    },
-    {
-      "game_date": "2026-10-24",
-      "game": "Jonny Clayton vs Josh Rock",
-      "game_time": "20:15",
-      "bet_type": "moneyline",
-      "pick": "Jonny Clayton",
-      "confidence": 0.6604,
-      "edge": 0.1048,
-      "odds": -125,
-      "tier": "Elite",
-      "notes": "European Championship"
-    }
-  ]
+  "bets": []
 }
