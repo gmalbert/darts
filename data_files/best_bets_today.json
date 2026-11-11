@@ -1,13 +1,13 @@
 {
   "meta": {
     "sport": "Darts",
-    "generated_at": "2026-11-11T10:25:29.694173+00:00",
+    "generated_at": "2026-11-11T14:58:20.069280+00:00",
     "model_version": "1.0.0",
     "season": "2026",
     "status": "no_picks",
     "tier_definition": "edge-v1",
     "lookahead_days": 7,
-    "source_commit": "b12480f647f7766e9e37002d089d4122f4eb3d0f",
+    "source_commit": "aeb7fbb3ec711fe4c3cfd182cabd18be766980b2",
     "total_bets": 0
   },
   "bets": []
